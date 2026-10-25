@@ -7,7 +7,7 @@
 #include <lv2/urid/urid.h>
 #include <lv2/midi/midi.h>
 
-#define URI "https://example.org/pistomp-midi-probe"
+#define PLUGIN_URI "https://example.org/pistomp-midi-probe"
 enum { MIDI_IN=0, COUNT=1, STATUS=2, DATA1=3, DATA2=4 };
 typedef struct {
   const LV2_Atom_Sequence* midi;
@@ -61,7 +61,7 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
 static void deactivate(LV2_Handle instance) { (void)instance; }
 static void cleanup(LV2_Handle instance) { free(instance); }
 static const void* extension_data(const char* uri) { (void)uri; return NULL; }
-static const LV2_Descriptor descriptor={ URI, instantiate, connect_port,
+static const LV2_Descriptor descriptor={ PLUGIN_URI, instantiate, connect_port,
   activate, run, deactivate, cleanup, extension_data };
 LV2_SYMBOL_EXPORT const LV2_Descriptor* lv2_descriptor(uint32_t index) {
   return index==0 ? &descriptor : NULL;

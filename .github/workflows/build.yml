@@ -17,8 +17,7 @@ jobs:
           cp midi-monitor.so manifest.ttl monitor.ttl stage/pistomp-midi-probe.lv2/
           cp -R modgui stage/pistomp-midi-probe.lv2/
           lv2ls | head -n 5 || true
-          (cd stage && zip -qr ../pistomp-midi-probe-aarch64.zip pistomp-midi-probe.lv2)
       - uses: actions/upload-artifact@v4
         with:
           name: pistomp-midi-probe-aarch64
-          path: pistomp-midi-probe-aarch64.zip
+          path: stage/

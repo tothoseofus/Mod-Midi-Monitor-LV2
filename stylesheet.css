@@ -1,0 +1,4 @@
+.mod-pistomp-midi-probe { background:#15212c;color:#ebf2fa;padding:15px;border-radius:10px;min-width:250px;font:14px sans-serif; }
+.mod-pistomp-midi-probe .probe-title{font-size:16px;font-weight:bold;margin-bottom:12px}
+.mod-pistomp-midi-probe .probe-line{margin:8px 0;font-family:monospace}
+.mod-pistomp-midi-probe .probe-help{font-size:11px;opacity:.7;margin-top:12px}

@@ -135,3 +135,22 @@
     z-index: 35;
 }
 
+/*test to fix text selection*/
+.mod-pistomp-midi-probe textarea.probe-log {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    resize: none;
+    color: #e2eaf5;
+    background: #09131d;
+    border: 1px solid #344b60;
+    border-radius: 5px;
+    padding: 6px;
+    font: 11px monospace;
+    user-select: text !important;
+    -webkit-user-select: text !important;
+    pointer-events: auto;
+    position: relative;
+    z-index: 30;
+}
+

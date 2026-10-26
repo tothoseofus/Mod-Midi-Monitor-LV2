@@ -50,17 +50,14 @@
     margin-top: 12px;
 }
 
-.mod-pistomp-midi-probe .mod-pedal-input {
+.mod-pistomp-midi-probe .probe-io {
     position: absolute;
-    left: -28px;
-    top: 55px;
-    z-index: 30;
+    top: 65px;
+    z-index: 35;
 }
 
-.mod-pistomp-midi-probe .mod-input {
-    position: relative;
-    width: 24px;
-    height: 24px;
-    cursor: pointer;
+.mod-pistomp-midi-probe .probe-in {
+    left: -11px;
 }
+
 

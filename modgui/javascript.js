@@ -33,6 +33,7 @@ function (event) {
             transportGaps: 0,
             lastSequence: null,
             transportMode: false,
+            replayedEvents: 0,
 
             history: [],
             following: true,
@@ -100,7 +101,7 @@ function (event) {
         if (m.following) {
             m.history.push(line);
 
-            // Rolling history in normal mode.
+            // Rolling history in normal mode<=.
             if (m.history.length > NORMAL_LIMIT) {
                 m.history.splice(
                     0,
@@ -356,10 +357,9 @@ function (event) {
                         sequence
                     );
                 } else if (sequence <= m.lastSequence) {
-                    addLine(
-                        '! Duplicate/out-of-order event #' +
-                        sequence
-                    );
+                    // Already received, possibly replayed by MODEP.
+                    // Don't add it to the MIDI history again.
+                    m.replayedEvents++;
                     continue;
                 }
             }
@@ -375,10 +375,11 @@ function (event) {
 
         if (atomStatus) {
             atomStatus.textContent =
-                validEvents + ' events in last batch' +
+                validEvents + ' new events' +
                 ' | Total: ' + m.batchEvents +
-                ' | Gaps: ' + m.transportGaps;
-        }
+                ' | Gaps: ' + m.transportGaps +
+                ' | Replays: ' + m.replayedEvents;
+         }
 
         renderLog();
         updateStatus();

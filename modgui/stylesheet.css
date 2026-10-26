@@ -154,3 +154,10 @@
     z-index: 30;
 }
 
+.mod-pistomp-midi-probe textarea.probe-log {
+    height: 155px;
+    line-height: 1.5;
+    white-space: pre;
+    cursor: text;
+    outline: none;
+}

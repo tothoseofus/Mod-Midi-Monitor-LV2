@@ -49,6 +49,7 @@ function (event) {
     var followButton = find('.probe-follow-btn');
     var copyButton = find('.probe-copy-btn');
     var copyStatus = find('.probe-copy-status');
+    var clearButton = find('.probe-clear-btn');
 
     // ----------------------------------------
     // Status and visual updates
@@ -225,6 +226,60 @@ function (event) {
                 }
             });
         }
+
+        
+        // ----------------------------------------
+        // Clear Log button
+        // ----------------------------------------
+
+        if (clearButton) {
+            clearButton.addEventListener('mousedown', function(e) {
+                e.stopPropagation();
+            });
+
+            clearButton.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                // Remove the displayed and stored history.
+                m.history = [];
+
+                // Reset display statistics.
+                m.snapshots = 0;
+                m.skipped = 0;
+                m.batchEvents = 0;
+                m.transportGaps = 0;
+                m.replayedEvents = 0;
+
+                // Resume automatic scrolling.
+                m.following = true;
+                m.newDuringReview = 0;
+                m.droppedDuringReview = 0;
+
+                // IMPORTANT:
+                // Keep m.lastSequence unchanged.
+                // Otherwise replayed batches could be mistaken
+                // for new MIDI messages after clearing the log.
+
+                // Clear the textarea.
+                if (log) {
+                    log.value = '';
+                    log.scrollTop = 0;
+                }
+
+                if (copyStatus) {
+                    copyStatus.textContent = '';
+                }
+
+                var atomStatus = find('.probe-atom-status');
+                if (atomStatus) {
+                    atomStatus.textContent = 'Log cleared';
+                }
+
+                updateStatus();
+            });
+        }
+
 
         // Follow Latest button.
         if (followButton) {

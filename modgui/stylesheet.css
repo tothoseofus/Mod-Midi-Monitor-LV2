@@ -109,3 +109,29 @@
 }
 
 
+/* Keep MIDI log above the draggable surface */
+.mod-pistomp-midi-probe .probe-content {
+    position: absolute;
+    z-index: 25;
+    pointer-events: none;
+}
+
+.mod-pistomp-midi-probe .probe-log {
+    position: relative;
+    z-index: 30;
+    pointer-events: auto;
+    user-select: text;
+    -webkit-user-select: text;
+    cursor: text;
+}
+
+.mod-pistomp-midi-probe .probe-log-line {
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+/* Keep the MIDI connector clickable */
+.mod-pistomp-midi-probe .probe-io {
+    z-index: 35;
+}
+

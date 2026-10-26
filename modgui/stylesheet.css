@@ -2,7 +2,7 @@
 .mod-pistomp-midi-probe {
     position: relative;
     width: 500px;
-    height: 340px;
+    height: 400px;
     box-sizing: border-box;
     background: #15212c;
     color: #ebf2fa;
@@ -216,3 +216,47 @@
     font-size: 11px;
     pointer-events: none;
 }
+
+
+/* Follow Latest button */
+
+.mod-pistomp-midi-probe .probe-follow-btn {
+    background: #176b82;
+    color: #ffffff;
+    border: 1px solid #3299b5;
+    border-radius: 4px;
+    padding: 5px 12px;
+    font: bold 11px Arial, sans-serif;
+    cursor: pointer;
+    pointer-events: auto;
+    user-select: none;
+}
+
+.mod-pistomp-midi-probe .probe-follow-btn:hover {
+    background: #2188a5;
+}
+
+.mod-pistomp-midi-probe .probe-follow-btn.following {
+    background: #164638;
+    border-color: #238b67;
+    color: #70f5c8;
+}
+
+.mod-pistomp-midi-probe .probe-review-status {
+    position: relative;
+    z-index: 30;
+    margin-top: 7px;
+    color: #ffb454;
+    font: 11px Arial, sans-serif;
+    pointer-events: none;
+}
+
+.mod-pistomp-midi-probe .probe-actions {
+    flex-wrap: wrap;
+}
+
+.mod-pistomp-midi-probe textarea.probe-log {
+    line-height: 1.5;
+    white-space: pre;
+}
+

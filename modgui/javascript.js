@@ -8,95 +8,6 @@ function (event) {
     var el = root.jquery ? root[0] : root;
     if (!el) return;
 
-    
-    // Initialise Copy All button once for this GUI instance.
-    if (!el._midiCopyReady) {
-        var copyButton = el.querySelector('.probe-copy-btn');
-        var textarea = el.querySelector('textarea.probe-log');
-        var copyStatus = el.querySelector('.probe-copy-status');
-
-        if (copyButton && textarea) {
-            copyButton.addEventListener('mousedown', function(e) {
-                e.stopPropagation();
-            });
-
-            copyButton.addEventListener('click', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-
-                // Use the full stored history, including updates that
-                // may have arrived while the textarea was focused.
-                var state = el._midiMonitor;
-                var text = state && state.history
-                    ? state.history.join('\n')
-                    : textarea.value;
-
-                if (!text) {
-                    if (copyStatus) copyStatus.textContent = 'No messages';
-                    return;
-                }
-
-                // Select the text in the visible textarea.
-                textarea.value = text;
-                textarea.focus();
-                textarea.select();
-
-                function fallbackCopy() {
-                    var success = false;
-    
-                    try {
-                        success = document.execCommand('copy');
-                    } catch (err) {
-                        success = false;
-                    }
-
-                    if (copyStatus) {
-                        copyStatus.textContent =
-                            success ? 'Copied!' : 'Copy failed';
-                    }
-                }
-
-                // Clipboard API requires a secure context.
-                if (navigator.clipboard &&
-                    navigator.clipboard.writeText &&
-                    window.isSecureContext) {
-
-                    navigator.clipboard.writeText(text).then(
-                        function() {
-                            if (copyStatus) {
-                                copyStatus.textContent = 'Copied!';
-                            }
-                        },
-                        function() {
-                            fallbackCopy();
-                        }
-                    );
-                } else {
-                    fallbackCopy();
-                }
-            });
-
-            el._midiCopyReady = true;
-        }
-    }
-
-    
-    // Initialise textarea keyboard handling once per GUI instance
-    if (!el._midiKeyboardReady) {
-        var textarea = el.querySelector('textarea.probe-log');
-
-        if (textarea) {
-            textarea.addEventListener('keydown', function(e) {
-                if (e.ctrlKey || e.metaKey) {
-                e.stopPropagation();
-                }
-            });
-
-            el._midiKeyboardReady = true;
-        }
-    }
-
-
     var find = function(selector) {
         return el.querySelector(selector);
     };
@@ -105,24 +16,306 @@ function (event) {
         return ('0' + (v & 255).toString(16).toUpperCase()).slice(-2);
     };
 
-    // One state object per GUI instance
+    var NORMAL_LIMIT = 100;
+    var REVIEW_LIMIT = 5000;
+
+    // Independent state for each plugin instance.
     if (!el._midiMonitor) {
         el._midiMonitor = {
             count: null,
             status: 0,
             data1: 0,
             data2: 0,
+
             snapshots: 0,
-            skipped: 0
+            skipped: 0,
+
+            history: [],
+            following: true,
+            newDuringReview: 0,
+            droppedDuringReview: 0
         };
     }
 
     var m = el._midiMonitor;
+    var log = find('textarea.probe-log');
+    var footer = find('.probe-log-footer');
+    var reviewStatus = find('.probe-review-status');
+    var followButton = find('.probe-follow-btn');
+    var copyButton = find('.probe-copy-btn');
+    var copyStatus = find('.probe-copy-status');
+
+    // ----------------------------------------
+    // Status and visual updates
+    // ----------------------------------------
+
+    function updateStatus() {
+        if (footer) {
+            footer.textContent =
+                'Snapshots: ' + m.snapshots +
+                ' | Skipped: ' + m.skipped +
+                ' | Stored lines: ' + m.history.length;
+        }
+
+        if (followButton) {
+            if (m.following) {
+                followButton.textContent = 'Following Latest';
+                followButton.classList.add('following');
+            } else {
+                followButton.textContent = 'Follow Latest';
+                followButton.classList.remove('following');
+            }
+        }
+
+        if (reviewStatus) {
+            if (m.following) {
+                reviewStatus.textContent = '';
+            } else if (m.droppedDuringReview > 0) {
+                reviewStatus.textContent =
+                    'History full! ' +
+                    m.droppedDuringReview +
+                    ' log lines not stored. ' +
+                    'Click Follow Latest to resume.';
+            } else {
+                reviewStatus.textContent =
+                    'Reviewing history | ' +
+                    m.newDuringReview +
+                    ' new log lines';
+            }
+        }
+    }
+
+    // ----------------------------------------
+    // History buffer
+    // ----------------------------------------
+
+    function addLine(line) {
+        if (m.following) {
+            m.history.push(line);
+
+            // Rolling history in normal mode.
+            if (m.history.length > NORMAL_LIMIT) {
+                m.history.splice(
+                    0,
+                    m.history.length - NORMAL_LIMIT
+                );
+            }
+        } else {
+            // Protect existing lines during review.
+            if (m.history.length < REVIEW_LIMIT) {
+                m.history.push(line);
+                m.newDuringReview++;
+            } else {
+                m.droppedDuringReview++;
+            }
+        }
+    }
+
+    // ----------------------------------------
+    // Textarea rendering
+    // ----------------------------------------
+
+    function renderLog() {
+        if (!log) return;
+
+        var text = m.history.join('\n');
+
+        if (m.following) {
+            log.value = text;
+            log.scrollTop = log.scrollHeight;
+            return;
+        }
+
+        // Preserve the reader's scroll and selection.
+        var oldScroll = log.scrollTop;
+        var oldStart = log.selectionStart;
+        var oldEnd = log.selectionEnd;
+        var oldDirection = log.selectionDirection;
+
+        log.value = text;
+
+        try {
+            log.setSelectionRange(
+                Math.min(oldStart, text.length),
+                Math.min(oldEnd, text.length),
+                oldDirection
+            );
+        } catch (err) {
+            // Selection preservation is best effort.
+        }
+
+        log.scrollTop = oldScroll;
+    }
+
+    // ----------------------------------------
+    // Enter review mode
+    // ----------------------------------------
+
+    function enterReviewMode() {
+        if (!m.following) return;
+
+        m.following = false;
+        m.newDuringReview = 0;
+        m.droppedDuringReview = 0;
+
+        updateStatus();
+    }
+
+    // ----------------------------------------
+    // Return to live following
+    // ----------------------------------------
+
+    function followLatest() {
+        m.following = true;
+        m.newDuringReview = 0;
+        m.droppedDuringReview = 0;
+
+        // Restore normal rolling history.
+        if (m.history.length > NORMAL_LIMIT) {
+            m.history = m.history.slice(-NORMAL_LIMIT);
+        }
+
+        renderLog();
+        updateStatus();
+    }
+
+    // ----------------------------------------
+    // Initialise GUI interaction once
+    // ----------------------------------------
+
+    if (!el._midiMonitorUIReady) {
+
+        if (log) {
+            // Clicking inside the history protects it.
+            log.addEventListener('mousedown', function(e) {
+                e.stopPropagation();
+                enterReviewMode();
+            });
+
+            // Touchscreen interaction.
+            log.addEventListener('touchstart', function(e) {
+                e.stopPropagation();
+                enterReviewMode();
+            }, { passive: true });
+
+            // Mouse-wheel scrolling.
+            log.addEventListener('wheel', function(e) {
+                e.stopPropagation();
+                enterReviewMode();
+            }, { passive: true });
+
+            // Keyboard navigation if supported by MODEP.
+            log.addEventListener('keydown', function(e) {
+                var keys = [
+                    'ArrowUp', 'ArrowDown',
+                    'PageUp', 'PageDown',
+                    'Home', 'End'
+                ];
+
+                if (keys.indexOf(e.key) !== -1) {
+                    enterReviewMode();
+                }
+            });
+        }
+
+        // Follow Latest button.
+        if (followButton) {
+            followButton.addEventListener('mousedown',
+                function(e) {
+                    e.stopPropagation();
+                }
+            );
+
+            followButton.addEventListener('click',
+                function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    followLatest();
+                }
+            );
+        }
+
+        // Copy All button.
+        if (copyButton && log) {
+            copyButton.addEventListener('mousedown',
+                function(e) {
+                    e.stopPropagation();
+                }
+            );
+
+            copyButton.addEventListener('click',
+                function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    var text = m.history.join('\n');
+
+                    if (!text) {
+                        if (copyStatus) {
+                            copyStatus.textContent =
+                                'No messages';
+                        }
+                        return;
+                    }
+
+                    function showResult(success) {
+                        if (copyStatus) {
+                            copyStatus.textContent =
+                                success ? 'Copied!' : 'Copy failed';
+                        }
+                    }
+
+                    // Select all text for legacy copy support.
+                    log.value = text;
+                    log.focus();
+                    log.select();
+
+                    function fallbackCopy() {
+                        var success = false;
+
+                        try {
+                            success =
+                                document.execCommand('copy');
+                        } catch (err) {
+                            success = false;
+                        }
+
+                        showResult(success);
+                    }
+
+                    // Modern Clipboard API with HTTP fallback.
+                    if (navigator.clipboard &&
+                        navigator.clipboard.writeText &&
+                        window.isSecureContext) {
+
+                        navigator.clipboard.writeText(text).then(
+                            function() {
+                                showResult(true);
+                            },
+                            function() {
+                                fallbackCopy();
+                            }
+                        );
+                    } else {
+                        fallbackCopy();
+                    }
+                }
+            );
+        }
+
+        el._midiMonitorUIReady = true;
+    }
+
+    // ----------------------------------------
+    // Process monitored LV2 control values
+    // ----------------------------------------
+
     var value = Math.round(Number(event.value));
 
     if (!Number.isFinite(value)) return;
 
-    // Receive individual MIDI byte updates
+    // MIDI byte updates.
     if (
         event.symbol === 'status' ||
         event.symbol === 'data1' ||
@@ -145,12 +338,17 @@ function (event) {
 
     if (event.symbol !== 'count') return;
 
+    // Total incoming MIDI event counter.
     var counter = find('.probe-count');
-    if (counter) counter.textContent = String(value);
 
-    // First count establishes a baseline
+    if (counter) {
+        counter.textContent = String(value);
+    }
+
+    // Establish baseline on first update.
     if (m.count === null) {
         m.count = value;
+        updateStatus();
         return;
     }
 
@@ -159,66 +357,31 @@ function (event) {
 
     if (difference <= 0) return;
 
-    var log = find('.probe-log');
-    if (!log) return;
+    // ----------------------------------------
+    // Record MIDI snapshots
+    // ----------------------------------------
 
-    // Keep an array of recent message lines
-    if (!m.history) {
-        m.history = [];
-    }
-
-    // Report gaps between GUI updates
     if (difference > 1) {
         var skipped = difference - 1;
         m.skipped += skipped;
 
-        m.history.push(
+        addLine(
             '... ' + skipped +
             ' intermediate events not displayed'
         );
     }
 
-    // Append the latest MIDI snapshot
     var bytesText = [
         hex(m.status),
         hex(m.data1),
         hex(m.data2)
     ].join(' ');
 
-    m.history.push('#' + value + '  ' + bytesText);
+    addLine('#' + value + '  ' + bytesText);
+
     m.snapshots++;
 
-    // Retain the most recent 100 lines
-    if (m.history.length > 100) {
-        m.history = m.history.slice(-100);
-    }
-
-
-var historyText = m.history.join('\n');
-
-// Don't disturb the user while selecting or copying text
-if (document.activeElement !== log) {
-    log.value = historyText;
-    log.scrollTop = log.scrollHeight;
-}
-
-// Temporary diagnostics
-var footer = find('.probe-log-footer');
-
-if (footer) {
-    footer.textContent =
-        'Snapshots: ' + m.snapshots +
-        ' | Skipped: ' + m.skipped +
-        ' | Element: ' + log.tagName +
-        ' | Length: ' + log.value.length;
-}
-
-/*
-    var footer = find('.probe-log-footer');
-    if (footer) {
-        footer.textContent =
-            'Snapshots: ' + m.snapshots +
-            ' | Skipped: ' + m.skipped;
-    }
-*/
+    // Always render new data, even in review mode.
+    renderLog();
+    updateStatus();
 }

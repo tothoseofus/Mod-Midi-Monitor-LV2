@@ -124,11 +124,12 @@ if (footer) {
         ' | Length: ' + log.value.length;
 }
 
-
+/*
     var footer = find('.probe-log-footer');
     if (footer) {
         footer.textContent =
             'Snapshots: ' + m.snapshots +
             ' | Skipped: ' + m.skipped;
     }
+*/
 }

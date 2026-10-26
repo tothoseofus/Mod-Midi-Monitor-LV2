@@ -18,7 +18,8 @@ function (event) {
 
         if (atomStatus) {
             atomStatus.textContent =
-                String(event.value);
+                String(event.value) +
+                ' (' + event.type + ')'; //temporary view event type
         }
 
         return;

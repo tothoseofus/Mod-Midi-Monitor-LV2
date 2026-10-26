@@ -19,14 +19,11 @@
         </div>
     </div>
 
-    <div class="mod-pedal-input">
-        {{#effect.ports.midi.input}}
-        <div class="mod-input mod-input-disconnected"
-             title="{{name}}"
+    <div class="probe-io probe-in">
+        <div class="mod-input"
              mod-role="input-midi-port"
-             mod-port-symbol="{{symbol}}">
-            <div class="mod-pedal-input-image"></div>
-        </div>
-        {{/effect.ports.midi.input}}
+             mod-port-symbol="midi_in"
+             title="MIDI Input"></div>
     </div>
+
 </div>

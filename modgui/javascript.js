@@ -33,7 +33,8 @@ function (event) {
             transportGaps: 0,
             lastSequence: null,
             transportMode: false,
-            replayedEvents: 0,
+            repeatedBatches: 0,
+            lastBatchText: null,
 
             history: [],
             following: true,
@@ -250,6 +251,7 @@ function (event) {
                 m.batchEvents = 0;
                 m.transportGaps = 0;
                 m.replayedEvents = 0;
+                m.lastBatchText = null;
 
                 // Resume automatic scrolling.
                 m.following = true;
@@ -381,7 +383,27 @@ function (event) {
         m.transportMode = true;
 
         var batchText = String(event.value || '');
+
+        // Ignore an identical batch delivered again by MODEP.
+        if (batchText === m.lastBatchText) {
+            m.repeatedBatches++;
+
+            var atomStatus = find('.probe-atom-status');
+
+            if (atomStatus) {
+                atomStatus.textContent =
+                    'Total: ' + m.batchEvents +
+                    ' | Gaps: ' + m.transportGaps +
+                    ' | Repeated batches: ' + m.repeatedBatches;
+            }
+
+            return;
+        }
+
+        m.lastBatchText = batchText;
+
         var lines = batchText.split(/\r?\n/);
+       
         var validEvents = 0;
 
         for (var i = 0; i < lines.length; i++) {
@@ -412,9 +434,7 @@ function (event) {
                         sequence
                     );
                 } else if (sequence <= m.lastSequence) {
-                    // Already received, possibly replayed by MODEP.
-                    // Don't add it to the MIDI history again.
-                    m.replayedEvents++;
+                    // Already processed this sequence number.
                     continue;
                 }
             }

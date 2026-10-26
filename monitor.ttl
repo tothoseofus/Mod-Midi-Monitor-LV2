@@ -6,6 +6,7 @@
 @prefix urid: <http://lv2plug.in/ns/ext/urid#> .
 @prefix modgui: <http://moddevices.com/ns/modgui#> .
 @prefix doap: <http://usefulinc.com/ns/doap#> .
+@prefix rsz: <http://lv2plug.in/ns/ext/resize-port#> .
 <https://example.org/pistomp-midi-probe>
     a lv2:UtilityPlugin ;
     doap:name "piStomp MIDI Monitor Probe" ;

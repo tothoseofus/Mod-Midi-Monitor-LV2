@@ -104,11 +104,26 @@ function (event) {
         m.history = m.history.slice(-100);
     }
 
-    // Update the textarea
-    log.value = m.history.join('\n');
 
-    // Automatically scroll to the latest message
-    log.scrollTop = log.scrollHeight;
+var historyText = m.history.join('\n');
+
+// Try both ways of updating the textarea.
+log.value = historyText;
+log.textContent = historyText;
+
+log.scrollTop = log.scrollHeight;
+
+// Temporary diagnostics
+var footer = find('.probe-log-footer');
+
+if (footer) {
+    footer.textContent =
+        'Snapshots: ' + m.snapshots +
+        ' | Skipped: ' + m.skipped +
+        ' | Element: ' + log.tagName +
+        ' | Length: ' + log.value.length;
+}
+
 
     var footer = find('.probe-log-footer');
     if (footer) {

@@ -8,6 +8,23 @@ function (event) {
     var el = root.jquery ? root[0] : root;
     if (!el) return;
 
+    
+    // Atom/Patch diagnostic notification
+    if (event.uri ===
+        'https://example.org/pistomp-midi-probe#lastMidi') {
+
+        var atomStatus =
+            el.querySelector('.probe-atom-status');
+
+        if (atomStatus) {
+            atomStatus.textContent =
+                String(event.value) +
+                ' (' + event.type + ')'; //temporary view event type
+        }
+
+        return;
+    }
+
     var find = function(selector) {
         return el.querySelector(selector);
     };

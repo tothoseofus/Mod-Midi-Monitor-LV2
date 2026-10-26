@@ -73,43 +73,41 @@ function (event) {
     var log = find('.probe-log');
     if (!log) return;
 
-    // Detect message-count gaps
+    // Keep an array of recent message lines
+    if (!m.history) {
+        m.history = [];
+    }
+
+    // Report gaps between GUI updates
     if (difference > 1) {
         var skipped = difference - 1;
         m.skipped += skipped;
 
-        var gap = document.createElement('div');
-        gap.className =
-            'probe-log-line probe-log-gap';
-
-        gap.textContent =
+        m.history.push(
             '... ' + skipped +
-            ' intermediate events not displayed';
-
-        log.appendChild(gap);
+            ' intermediate events not displayed'
+        );
     }
 
-    // Append latest available MIDI snapshot
-    var line = document.createElement('div');
-    line.className = 'probe-log-line';
-
+    // Append the latest MIDI snapshot
     var bytesText = [
         hex(m.status),
         hex(m.data1),
         hex(m.data2)
     ].join(' ');
 
-    line.textContent =
-        '#' + value + '  ' + bytesText;
-
-    log.appendChild(line);
+    m.history.push('#' + value + '  ' + bytesText);
     m.snapshots++;
 
-    // Keep only the most recent 100 log lines
-    while (log.children.length > 100) {
-        log.removeChild(log.firstChild);
+    // Retain the most recent 100 lines
+    if (m.history.length > 100) {
+        m.history = m.history.slice(-100);
     }
 
+    // Update the textarea
+    log.value = m.history.join('\n');
+
+    // Automatically scroll to the latest message
     log.scrollTop = log.scrollHeight;
 
     var footer = find('.probe-log-footer');

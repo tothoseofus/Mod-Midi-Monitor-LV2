@@ -1,4 +1,4 @@
-
+    
 function (event) {
     if (event.type !== 'change') return;
 
@@ -7,23 +7,6 @@ function (event) {
 
     var el = root.jquery ? root[0] : root;
     if (!el) return;
-
-    
-    // Atom/Patch diagnostic notification
-    if (event.uri ===
-        'https://example.org/pistomp-midi-probe#lastMidi') {
-
-        var atomStatus =
-            el.querySelector('.probe-atom-status');
-
-        if (atomStatus) {
-            atomStatus.textContent =
-                String(event.value) +
-                ' (' + event.type + ')'; //temporary view event type
-        }
-
-        return;
-    }
 
     var find = function(selector) {
         return el.querySelector(selector);
@@ -46,6 +29,10 @@ function (event) {
 
             snapshots: 0,
             skipped: 0,
+            batchEvents: 0,
+            transportGaps: 0,
+            lastSequence: null,
+            transportMode: false,
 
             history: [],
             following: true,
@@ -68,11 +55,14 @@ function (event) {
 
     function updateStatus() {
         if (footer) {
-            footer.textContent =
-                'Snapshots: ' + m.snapshots +
-                ' | Skipped: ' + m.skipped +
-                ' | Stored lines: ' + m.history.length;
-        }
+            footer.textContent = m.transportMode
+                ? 'Batch events: ' + m.batchEvents +
+                  ' | Transport gaps: ' + m.transportGaps +
+                  ' | Stored lines: ' + m.history.length
+                : 'Snapshots: ' + m.snapshots +
+                  ' | Skipped: ' + m.skipped +
+                  ' | Stored lines: ' + m.history.length;
+         }
 
         if (followButton) {
             if (m.following) {
@@ -324,6 +314,78 @@ function (event) {
         el._midiMonitorUIReady = true;
     }
 
+    
+    // ----------------------------------------
+    // Batched Atom/Patch MIDI notifications
+    // ----------------------------------------
+
+    if (event.uri ===
+        'https://example.org/pistomp-midi-probe#lastMidi') {
+
+        m.transportMode = true;
+
+        var batchText = String(event.value || '');
+        var lines = batchText.split(/\r?\n/);
+        var validEvents = 0;
+
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i].trim();
+            if (!line) continue;
+
+            // Format: sequence,HEX HEX HEX
+            var match = /^(\d+),((?:[0-9A-Fa-f]{2})(?: [0-9A-Fa-f]{2}){0,2})$/.exec(line);
+
+            if (!match) {
+                addLine('! Invalid batch record: ' + line);
+                continue;
+            }
+
+            var sequence = Number(match[1]);
+            var midiBytes = match[2].toUpperCase();
+
+            if (m.lastSequence !== null) {
+                if (sequence > m.lastSequence + 1) {
+                    var missing =
+                        sequence - m.lastSequence - 1;
+
+                    m.transportGaps += missing;
+
+                    addLine(
+                        '! ' + missing +
+                        ' MIDI events missing before #' +
+                        sequence
+                    );
+                } else if (sequence <= m.lastSequence) {
+                    addLine(
+                        '! Duplicate/out-of-order event #' +
+                        sequence
+                    );
+                    continue;
+                }
+            }
+
+            m.lastSequence = sequence;
+            m.batchEvents++;
+            validEvents++;
+
+            addLine('#' + sequence + '  ' + midiBytes);
+        }
+
+        var atomStatus = find('.probe-atom-status');
+
+        if (atomStatus) {
+            atomStatus.textContent =
+                validEvents + ' events in last batch' +
+                ' | Total: ' + m.batchEvents +
+                ' | Gaps: ' + m.transportGaps;
+        }
+
+        renderLog();
+        updateStatus();
+
+        return;
+    }
+   
     // ----------------------------------------
     // Process monitored LV2 control values
     // ----------------------------------------
@@ -374,6 +436,13 @@ function (event) {
 
     if (difference <= 0) return;
 
+    // Once native batching is active, don't duplicate events
+    // using the old numerical snapshot mechanism.
+    if (m.transportMode) {
+        updateStatus();
+        return;
+    }
+    
     // ----------------------------------------
     // Record MIDI snapshots
     // ----------------------------------------

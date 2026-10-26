@@ -8,6 +8,95 @@ function (event) {
     var el = root.jquery ? root[0] : root;
     if (!el) return;
 
+    
+    // Initialise Copy All button once for this GUI instance.
+    if (!el._midiCopyReady) {
+        var copyButton = el.querySelector('.probe-copy-btn');
+        var textarea = el.querySelector('textarea.probe-log');
+        var copyStatus = el.querySelector('.probe-copy-status');
+
+        if (copyButton && textarea) {
+            copyButton.addEventListener('mousedown', function(e) {
+                e.stopPropagation();
+            });
+
+            copyButton.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                // Use the full stored history, including updates that
+                // may have arrived while the textarea was focused.
+                var state = el._midiMonitor;
+                var text = state && state.history
+                    ? state.history.join('\n')
+                    : textarea.value;
+
+                if (!text) {
+                    if (copyStatus) copyStatus.textContent = 'No messages';
+                    return;
+                }
+
+                // Select the text in the visible textarea.
+                textarea.value = text;
+                textarea.focus();
+                textarea.select();
+
+                function fallbackCopy() {
+                    var success = false;
+    
+                    try {
+                        success = document.execCommand('copy');
+                    } catch (err) {
+                        success = false;
+                    }
+
+                    if (copyStatus) {
+                        copyStatus.textContent =
+                            success ? 'Copied!' : 'Copy failed';
+                    }
+                }
+
+                // Clipboard API requires a secure context.
+                if (navigator.clipboard &&
+                    navigator.clipboard.writeText &&
+                    window.isSecureContext) {
+
+                    navigator.clipboard.writeText(text).then(
+                        function() {
+                            if (copyStatus) {
+                                copyStatus.textContent = 'Copied!';
+                            }
+                        },
+                        function() {
+                            fallbackCopy();
+                        }
+                    );
+                } else {
+                    fallbackCopy();
+                }
+            });
+
+            el._midiCopyReady = true;
+        }
+    }
+
+    
+    // Initialise textarea keyboard handling once per GUI instance
+    if (!el._midiKeyboardReady) {
+        var textarea = el.querySelector('textarea.probe-log');
+
+        if (textarea) {
+            textarea.addEventListener('keydown', function(e) {
+                if (e.ctrlKey || e.metaKey) {
+                e.stopPropagation();
+                }
+            });
+
+            el._midiKeyboardReady = true;
+        }
+    }
+
+
     var find = function(selector) {
         return el.querySelector(selector);
     };
@@ -107,11 +196,11 @@ function (event) {
 
 var historyText = m.history.join('\n');
 
-// Try both ways of updating the textarea.
-log.value = historyText;
-log.textContent = historyText;
-
-log.scrollTop = log.scrollHeight;
+// Don't disturb the user while selecting or copying text
+if (document.activeElement !== log) {
+    log.value = historyText;
+    log.scrollTop = log.scrollHeight;
+}
 
 // Temporary diagnostics
 var footer = find('.probe-log-footer');

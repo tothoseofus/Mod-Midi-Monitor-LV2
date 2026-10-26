@@ -161,3 +161,24 @@
     cursor: text;
     outline: none;
 }
+
+
+/* Make selected MIDI log text clearly visible */
+.mod-pistomp-midi-probe textarea.probe-log::selection {
+    background: #2684ff !important;
+    color: #ffffff !important;
+}
+
+.mod-pistomp-midi-probe textarea.probe-log::-moz-selection {
+    background: #2684ff !important;
+    color: #ffffff !important;
+}
+
+/* Ensure textarea receives normal text interaction */
+.mod-pistomp-midi-probe textarea.probe-log {
+    user-select: text !important;
+    -webkit-user-select: text !important;
+    cursor: text;
+    outline: none;
+}
+

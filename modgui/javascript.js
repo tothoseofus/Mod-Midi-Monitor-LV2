@@ -8,8 +8,7 @@ function (event) {
     var el = root.jquery ? root[0] : root;
     if (!el) return;
 
-    
-    // Initialise Copy All button once for this GUI instance.
+    // Initialise Copy All button once per GUI instance.
     if (!el._midiCopyReady) {
         var copyButton = el.querySelector('.probe-copy-btn');
         var textarea = el.querySelector('textarea.probe-log');
@@ -24,26 +23,28 @@ function (event) {
                 e.preventDefault();
                 e.stopPropagation();
 
-                // Use the full stored history, including updates that
-                // may have arrived while the textarea was focused.
+                // Copy the latest stored history, even if the
+                // textarea display has been paused while focused.
                 var state = el._midiMonitor;
                 var text = state && state.history
                     ? state.history.join('\n')
                     : textarea.value;
 
                 if (!text) {
-                    if (copyStatus) copyStatus.textContent = 'No messages';
+                    if (copyStatus) {
+                        copyStatus.textContent = 'No messages';
+                    }
                     return;
                 }
 
-                // Select the text in the visible textarea.
+                // Update and select the complete log.
                 textarea.value = text;
                 textarea.focus();
                 textarea.select();
 
                 function fallbackCopy() {
                     var success = false;
-    
+
                     try {
                         success = document.execCommand('copy');
                     } catch (err) {
@@ -56,7 +57,8 @@ function (event) {
                     }
                 }
 
-                // Clipboard API requires a secure context.
+                // Prefer the modern Clipboard API where available.
+                // Fall back to execCommand for HTTP-based MODEP.
                 if (navigator.clipboard &&
                     navigator.clipboard.writeText &&
                     window.isSecureContext) {
@@ -80,23 +82,6 @@ function (event) {
         }
     }
 
-    
-    // Initialise textarea keyboard handling once per GUI instance
-    if (!el._midiKeyboardReady) {
-        var textarea = el.querySelector('textarea.probe-log');
-
-        if (textarea) {
-            textarea.addEventListener('keydown', function(e) {
-                if (e.ctrlKey || e.metaKey) {
-                e.stopPropagation();
-                }
-            });
-
-            el._midiKeyboardReady = true;
-        }
-    }
-
-
     var find = function(selector) {
         return el.querySelector(selector);
     };
@@ -105,7 +90,7 @@ function (event) {
         return ('0' + (v & 255).toString(16).toUpperCase()).slice(-2);
     };
 
-    // One state object per GUI instance
+    // Maintain independent state for each plugin GUI instance.
     if (!el._midiMonitor) {
         el._midiMonitor = {
             count: null,
@@ -113,7 +98,8 @@ function (event) {
             data1: 0,
             data2: 0,
             snapshots: 0,
-            skipped: 0
+            skipped: 0,
+            history: []
         };
     }
 
@@ -122,7 +108,7 @@ function (event) {
 
     if (!Number.isFinite(value)) return;
 
-    // Receive individual MIDI byte updates
+    // Process incoming MIDI byte control updates.
     if (
         event.symbol === 'status' ||
         event.symbol === 'data1' ||
@@ -145,10 +131,13 @@ function (event) {
 
     if (event.symbol !== 'count') return;
 
+    // Update total MIDI message counter.
     var counter = find('.probe-count');
-    if (counter) counter.textContent = String(value);
+    if (counter) {
+        counter.textContent = String(value);
+    }
 
-    // First count establishes a baseline
+    // Establish the initial message count.
     if (m.count === null) {
         m.count = value;
         return;
@@ -159,15 +148,10 @@ function (event) {
 
     if (difference <= 0) return;
 
-    var log = find('.probe-log');
+    var log = find('textarea.probe-log');
     if (!log) return;
 
-    // Keep an array of recent message lines
-    if (!m.history) {
-        m.history = [];
-    }
-
-    // Report gaps between GUI updates
+    // Identify intermediate messages not individually displayed.
     if (difference > 1) {
         var skipped = difference - 1;
         m.skipped += skipped;
@@ -178,7 +162,7 @@ function (event) {
         );
     }
 
-    // Append the latest MIDI snapshot
+    // Store the latest MIDI message snapshot.
     var bytesText = [
         hex(m.status),
         hex(m.data1),
@@ -188,37 +172,24 @@ function (event) {
     m.history.push('#' + value + '  ' + bytesText);
     m.snapshots++;
 
-    // Retain the most recent 100 lines
+    // Retain the latest 100 lines.
     if (m.history.length > 100) {
         m.history = m.history.slice(-100);
     }
 
+    // Update the display only when the textarea is not focused.
+    // This prevents incoming MIDI events from interrupting selection.
+    if (document.activeElement !== log) {
+        log.value = m.history.join('\n');
+        log.scrollTop = log.scrollHeight;
+    }
 
-var historyText = m.history.join('\n');
-
-// Don't disturb the user while selecting or copying text
-if (document.activeElement !== log) {
-    log.value = historyText;
-    log.scrollTop = log.scrollHeight;
-}
-
-// Temporary diagnostics
-var footer = find('.probe-log-footer');
-
-if (footer) {
-    footer.textContent =
-        'Snapshots: ' + m.snapshots +
-        ' | Skipped: ' + m.skipped +
-        ' | Element: ' + log.tagName +
-        ' | Length: ' + log.value.length;
-}
-
-/*
+    // Update the status footer.
     var footer = find('.probe-log-footer');
+
     if (footer) {
         footer.textContent =
             'Snapshots: ' + m.snapshots +
             ' | Skipped: ' + m.skipped;
     }
-*/
 }

@@ -250,7 +250,7 @@ function (event) {
                 m.skipped = 0;
                 m.batchEvents = 0;
                 m.transportGaps = 0;
-                m.replayedEvents = 0;
+                m.repeatedBatches = 0;
                 m.lastBatchText = null;
 
                 // Resume automatic scrolling.
@@ -453,7 +453,7 @@ function (event) {
                 validEvents + ' new events' +
                 ' | Total: ' + m.batchEvents +
                 ' | Gaps: ' + m.transportGaps +
-                ' | Replays: ' + m.replayedEvents;
+                ' | Replays: ' + m.repeatedBatches;
          }
 
         renderLog();

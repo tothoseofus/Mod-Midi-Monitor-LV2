@@ -2,7 +2,7 @@
 .mod-pistomp-midi-probe {
     position: relative;
     width: 500px;
-    height: 400px;
+    height: 450px;
     box-sizing: border-box;
     background: #15212c;
     color: #ebf2fa;
@@ -258,5 +258,24 @@
 .mod-pistomp-midi-probe textarea.probe-log {
     line-height: 1.5;
     white-space: pre;
+}
+
+
+/* Clear Log button */
+
+.mod-pistomp-midi-probe .probe-clear-btn {
+    background: #513039;
+    color: #ffffff;
+    border: 1px solid #a45a69;
+    border-radius: 4px;
+    padding: 5px 12px;
+    font: bold 11px Arial, sans-serif;
+    cursor: pointer;
+    pointer-events: auto;
+    user-select: none;
+}
+
+.mod-pistomp-midi-probe .probe-clear-btn:hover {
+    background: #71404d;
 }
 

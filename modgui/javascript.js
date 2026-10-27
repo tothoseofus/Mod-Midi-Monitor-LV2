@@ -507,10 +507,7 @@ function (event) {
         return;
     }
 
-    var difference = value - m.count;
     m.count = value;
-
-    if (difference <= 0) return;
 
     // Once native batching is active, don't duplicate events
     // using the old numerical snapshot mechanism.
@@ -520,30 +517,15 @@ function (event) {
     }
     
     // ----------------------------------------
-    // Record MIDI snapshots
+    // History is supplied by Atom/Patch only
     // ----------------------------------------
 
-    if (difference > 1) {
-        var skipped = difference - 1;
-        m.skipped += skipped;
+    // Numerical control ports still update the
+    // message counter and latest MIDI bytes.
+    //
+    // They no longer add entries to the history,
+    // because Atom/Patch handles that separately.
 
-        addLine(
-            '... ' + skipped +
-            ' intermediate events not displayed'
-        );
-    }
+    return;
 
-    var bytesText = [
-        hex(m.status),
-        hex(m.data1),
-        hex(m.data2)
-    ].join(' ');
-
-    addLine('#' + value + '  ' + bytesText);
-
-    m.snapshots++;
-
-    // Always render new data, even in review mode.
-    renderLog();
-    updateStatus();
 }

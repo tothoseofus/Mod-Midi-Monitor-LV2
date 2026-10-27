@@ -470,6 +470,25 @@ function (event) {
 
     if (!Number.isFinite(value)) return;
 
+    
+    // ----------------------------------------
+    // Diagnostic: C-side batch count
+    // ----------------------------------------
+
+    if (event.symbol === 'batch_count') {
+
+        var batchCounter =
+            find('.probe-batch-count');
+
+        if (batchCounter) {
+            batchCounter.textContent =
+                String(value);
+        }
+
+        return;
+    }
+
+
     // MIDI byte updates.
     if (
         event.symbol === 'status' ||

@@ -6,7 +6,7 @@ jobs:
   build:
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Dependencies
         run: sudo apt-get update && sudo apt-get install -y lv2-dev lilv-utils file python3-rdflib
 
@@ -31,7 +31,7 @@ jobs:
           cp midi-monitor.so manifest.ttl monitor.ttl stage/pistomp-midi-probe.lv2/
           cp -R modgui stage/pistomp-midi-probe.lv2/
           lv2ls | head -n 5 || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: pistomp-midi-probe-aarch64
           path: stage/

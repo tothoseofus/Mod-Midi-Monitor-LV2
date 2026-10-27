@@ -26,7 +26,8 @@ enum {
     STATUS = 2,
     DATA1 = 3,
     DATA2 = 4,
-    NOTIFY = 5
+    NOTIFY = 5,
+    BATCH_COUNT = 6
 };
 
 typedef struct {
@@ -43,6 +44,9 @@ typedef struct {
     float* status;
     float* data1;
     float* data2;
+    // Diagnostic: number of batches actually emitted
+    float* batch_count;
+    uint32_t batches_emitted;
 
     LV2_URID midi_urid;
     LV2_URID patch_set;
@@ -318,6 +322,9 @@ static void connect_port(
         case NOTIFY:
             m->notify = (LV2_Atom_Sequence*)data;
             break;
+        case BATCH_COUNT:
+            m->batch_count = (float*)data;
+            break;
         default:
             break;
     }
@@ -328,6 +335,7 @@ static void activate(LV2_Handle instance)
     (void)instance;
 }
 
+
 static void run(LV2_Handle instance, uint32_t n_samples)
 {
     (void)n_samples;
@@ -335,22 +343,20 @@ static void run(LV2_Handle instance, uint32_t n_samples)
     Monitor* m = (Monitor*)instance;
 
     /*
-     * Initialise an empty notification sequence each run,
-     * even if no MIDI arrives.
+     * The host supplies the Atom output buffer
+     * capacity at the start of each run().
+     *
+     * Save it before writing anything.
      */
     uint32_t capacity = 0;
 
     if (m->notify) {
         capacity = m->notify->atom.size;
-
-        if (capacity >= sizeof(LV2_Atom_Sequence)) {
-            m->notify->atom.type = m->forge.Sequence;
-            m->notify->atom.size =
-                sizeof(LV2_Atom_Sequence_Body);
-            m->notify->body.unit = 0;
-            m->notify->body.pad = 0;
-        }
     }
+
+    // ----------------------------------------
+    // Process incoming MIDI
+    // ----------------------------------------
 
     if (m->midi) {
         LV2_ATOM_SEQUENCE_FOREACH(m->midi, ev) {
@@ -366,8 +372,10 @@ static void run(LV2_Handle instance, uint32_t n_samples)
             ++m->num;
 
             m->last_status = bytes[0];
+
             m->last_data1 =
                 ev->body.size > 1 ? bytes[1] : 0;
+
             m->last_data2 =
                 ev->body.size > 2 ? bytes[2] : 0;
 
@@ -375,14 +383,51 @@ static void run(LV2_Handle instance, uint32_t n_samples)
         }
     }
 
-    /*
-     * Restore the host-supplied capacity before
-     * constructing the outgoing sequence.
-     */
-    if (m->notify && capacity >= MIN_NOTIFY_CAPACITY) {
-        m->notify->atom.size = capacity;
-        write_batch(m);
+    // ----------------------------------------
+    // Write Atom/Patch output
+    // ----------------------------------------
+
+    bool batch_written = false;
+
+    if (m->notify &&
+        m->queued > 0 &&
+        capacity >= MIN_NOTIFY_CAPACITY) {
+
+        // write_batch() reads the host's capacity
+        // from notify->atom.size and replaces it
+        // with the size of the forged sequence.
+
+        batch_written = write_batch(m);
+
+        if (batch_written) {
+            ++m->batches_emitted;
+        }
     }
+
+    /*
+     * CRITICAL:
+     *
+     * If no batch was written, explicitly
+     * initialise an EMPTY Atom sequence.
+     *
+     * Never leave atom.size set to the original
+     * buffer capacity.
+     */
+    if (m->notify && !batch_written &&
+        capacity >= sizeof(LV2_Atom_Sequence_Body)) {
+
+        m->notify->atom.type = m->forge.Sequence;
+
+        m->notify->atom.size =
+            sizeof(LV2_Atom_Sequence_Body);
+
+        m->notify->body.unit = 0;
+        m->notify->body.pad = 0;
+    }
+
+    // ----------------------------------------
+    // Existing numerical control outputs
+    // ----------------------------------------
 
     if (m->count) {
         *m->count = (float)m->num;
@@ -399,7 +444,17 @@ static void run(LV2_Handle instance, uint32_t n_samples)
     if (m->data2) {
         *m->data2 = (float)m->last_data2;
     }
+
+    // ----------------------------------------
+    // New diagnostic output
+    // ----------------------------------------
+
+    if (m->batch_count) {
+        *m->batch_count =
+            (float)m->batches_emitted;
+    }
 }
+
 
 static void deactivate(LV2_Handle instance)
 {

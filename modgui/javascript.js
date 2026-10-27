@@ -1,4 +1,4 @@
-
+    
 function (event) {
     if (event.type !== 'change') return;
 
@@ -29,6 +29,12 @@ function (event) {
 
             snapshots: 0,
             skipped: 0,
+            batchEvents: 0,
+            transportGaps: 0,
+            lastSequence: null,
+            transportMode: false,
+            repeatedBatches: 0,
+            lastBatchText: null,
 
             history: [],
             following: true,
@@ -44,6 +50,7 @@ function (event) {
     var followButton = find('.probe-follow-btn');
     var copyButton = find('.probe-copy-btn');
     var copyStatus = find('.probe-copy-status');
+    var clearButton = find('.probe-clear-btn');
 
     // ----------------------------------------
     // Status and visual updates
@@ -51,11 +58,14 @@ function (event) {
 
     function updateStatus() {
         if (footer) {
-            footer.textContent =
-                'Snapshots: ' + m.snapshots +
-                ' | Skipped: ' + m.skipped +
-                ' | Stored lines: ' + m.history.length;
-        }
+            footer.textContent = m.transportMode
+                ? 'Batch events: ' + m.batchEvents +
+                  ' | Transport gaps: ' + m.transportGaps +
+                  ' | Stored lines: ' + m.history.length
+                : 'Snapshots: ' + m.snapshots +
+                  ' | Skipped: ' + m.skipped +
+                  ' | Stored lines: ' + m.history.length;
+         }
 
         if (followButton) {
             if (m.following) {
@@ -93,7 +103,7 @@ function (event) {
         if (m.following) {
             m.history.push(line);
 
-            // Rolling history in normal mode.
+            // Rolling history in normal mode<=.
             if (m.history.length > NORMAL_LIMIT) {
                 m.history.splice(
                     0,
@@ -218,6 +228,61 @@ function (event) {
             });
         }
 
+        
+        // ----------------------------------------
+        // Clear Log button
+        // ----------------------------------------
+
+        if (clearButton) {
+            clearButton.addEventListener('mousedown', function(e) {
+                e.stopPropagation();
+            });
+
+            clearButton.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                // Remove the displayed and stored history.
+                m.history = [];
+
+                // Reset display statistics.
+                m.snapshots = 0;
+                m.skipped = 0;
+                m.batchEvents = 0;
+                m.transportGaps = 0;
+                m.repeatedBatches = 0;
+                m.lastBatchText = null;
+
+                // Resume automatic scrolling.
+                m.following = true;
+                m.newDuringReview = 0;
+                m.droppedDuringReview = 0;
+
+                // IMPORTANT:
+                // Keep m.lastSequence unchanged.
+                // Otherwise replayed batches could be mistaken
+                // for new MIDI messages after clearing the log.
+
+                // Clear the textarea.
+                if (log) {
+                    log.value = '';
+                    log.scrollTop = 0;
+                }
+
+                if (copyStatus) {
+                    copyStatus.textContent = '';
+                }
+
+                var atomStatus = find('.probe-atom-status');
+                if (atomStatus) {
+                    atomStatus.textContent = 'Log cleared';
+                }
+
+                updateStatus();
+            });
+        }
+
+
         // Follow Latest button.
         if (followButton) {
             followButton.addEventListener('mousedown',
@@ -307,6 +372,96 @@ function (event) {
         el._midiMonitorUIReady = true;
     }
 
+    
+    // ----------------------------------------
+    // Batched Atom/Patch MIDI notifications
+    // ----------------------------------------
+
+    if (event.uri ===
+        'https://example.org/pistomp-midi-probe#lastMidi') {
+
+        m.transportMode = true;
+
+        var batchText = String(event.value || '');
+
+        // Ignore an identical batch delivered again by MODEP.
+        if (batchText === m.lastBatchText) {
+            m.repeatedBatches++;
+
+            var atomStatus = find('.probe-atom-status');
+
+            if (atomStatus) {
+                atomStatus.textContent =
+                    'Total: ' + m.batchEvents +
+                    ' | Gaps: ' + m.transportGaps +
+                    ' | Repeated batches: ' + m.repeatedBatches;
+            }
+
+            return;
+        }
+
+        m.lastBatchText = batchText;
+
+        var lines = batchText.split(/\r?\n/);
+       
+        var validEvents = 0;
+
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i].trim();
+            if (!line) continue;
+
+            // Format: sequence,HEX HEX HEX
+            var match = /^(\d+),((?:[0-9A-Fa-f]{2})(?: [0-9A-Fa-f]{2}){0,2})$/.exec(line);
+
+            if (!match) {
+                addLine('! Invalid batch record: ' + line);
+                continue;
+            }
+
+            var sequence = Number(match[1]);
+            var midiBytes = match[2].toUpperCase();
+
+            if (m.lastSequence !== null) {
+                if (sequence > m.lastSequence + 1) {
+                    var missing =
+                        sequence - m.lastSequence - 1;
+
+                    m.transportGaps += missing;
+
+                    addLine(
+                        '! ' + missing +
+                        ' MIDI events missing before #' +
+                        sequence
+                    );
+                } else if (sequence <= m.lastSequence) {
+                    // Already processed this sequence number.
+                    continue;
+                }
+            }
+
+            m.lastSequence = sequence;
+            m.batchEvents++;
+            validEvents++;
+
+            addLine('#' + sequence + '  ' + midiBytes);
+        }
+
+        var atomStatus = find('.probe-atom-status');
+
+        if (atomStatus) {
+            atomStatus.textContent =
+                validEvents + ' new events' +
+                ' | Total: ' + m.batchEvents +
+                ' | Gaps: ' + m.transportGaps +
+                ' | Replays: ' + m.repeatedBatches;
+         }
+
+        renderLog();
+        updateStatus();
+
+        return;
+    }
+   
     // ----------------------------------------
     // Process monitored LV2 control values
     // ----------------------------------------
@@ -314,6 +469,25 @@ function (event) {
     var value = Math.round(Number(event.value));
 
     if (!Number.isFinite(value)) return;
+
+    
+    // ----------------------------------------
+    // Diagnostic: C-side batch count
+    // ----------------------------------------
+
+    if (event.symbol === 'batch_count') {
+
+        var batchCounter =
+            find('.probe-batch-count');
+
+        if (batchCounter) {
+            batchCounter.textContent =
+                String(value);
+        }
+
+        return;
+    }
+
 
     // MIDI byte updates.
     if (
@@ -352,36 +526,25 @@ function (event) {
         return;
     }
 
-    var difference = value - m.count;
     m.count = value;
 
-    if (difference <= 0) return;
-
-    // ----------------------------------------
-    // Record MIDI snapshots
-    // ----------------------------------------
-
-    if (difference > 1) {
-        var skipped = difference - 1;
-        m.skipped += skipped;
-
-        addLine(
-            '... ' + skipped +
-            ' intermediate events not displayed'
-        );
+    // Once native batching is active, don't duplicate events
+    // using the old numerical snapshot mechanism.
+    if (m.transportMode) {
+        updateStatus();
+        return;
     }
+    
+    // ----------------------------------------
+    // History is supplied by Atom/Patch only
+    // ----------------------------------------
 
-    var bytesText = [
-        hex(m.status),
-        hex(m.data1),
-        hex(m.data2)
-    ].join(' ');
+    // Numerical control ports still update the
+    // message counter and latest MIDI bytes.
+    //
+    // They no longer add entries to the history,
+    // because Atom/Patch handles that separately.
 
-    addLine('#' + value + '  ' + bytesText);
+    return;
 
-    m.snapshots++;
-
-    // Always render new data, even in review mode.
-    renderLog();
-    updateStatus();
 }

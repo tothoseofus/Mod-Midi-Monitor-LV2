@@ -1,7 +1,6 @@
 name: Build ARM64 LV2 probe
 on:
   push:
-    branches: [ "master", "main" ]
   workflow_dispatch:
 jobs:
   build:
@@ -9,7 +8,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Dependencies
-        run: sudo apt-get update && sudo apt-get install -y lv2-dev lilv-utils file
+        run: sudo apt-get update && sudo apt-get install -y lv2-dev lilv-utils file python3-rdflib
+
+      - name: Validate LV2 metadata
+        run: |
+          python3 - <<'PY'
+          from rdflib import Graph
+
+          for filename in ["manifest.ttl", "monitor.ttl"]:
+              graph = Graph()
+              graph.parse(filename, format="turtle")
+              print(f"{filename}: valid ({len(graph)} triples)")
+          PY
+
       - name: Compile
         run: |
           gcc -std=c11 -O2 -fPIC -shared -Wall -Wextra -o midi-monitor.so src/monitor.c

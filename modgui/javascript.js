@@ -1,3 +1,4 @@
+
 /*
  * Mod-Midi-Monitor-LV2
  * LV2 MIDI event monitor for MOD/MODEP and compatible hosts.
@@ -36,7 +37,6 @@ function (event) {
         return ('0' + (v & 255).toString(16).toUpperCase()).slice(-2);
     };
 
-    
     // ----------------------------------------
     // Human-readable MIDI decoding
     // ----------------------------------------
@@ -206,7 +206,6 @@ function (event) {
         }
     }
 
-
     var NORMAL_LIMIT = 100;
     var REVIEW_LIMIT = 5000;
 
@@ -218,14 +217,16 @@ function (event) {
             data1: 0,
             data2: 0,
 
-            snapshots: 0,
-            skipped: 0,
             batchEvents: 0,
             transportGaps: 0,
             lastSequence: null,
-            transportMode: false,
             repeatedBatches: 0,
             lastBatchText: null,
+            sysex: null,
+            sysexComplete: 0,
+            sysexIncomplete: 0,
+            queueDrops: 0,
+            unsupported: 0,
 
             history: [],
             following: true,
@@ -249,14 +250,15 @@ function (event) {
 
     function updateStatus() {
         if (footer) {
-            footer.textContent = m.transportMode
-                ? 'Batch events: ' + m.batchEvents +
-                  ' | Transport gaps: ' + m.transportGaps +
-                  ' | Stored lines: ' + m.history.length
-                : 'Snapshots: ' + m.snapshots +
-                  ' | Skipped: ' + m.skipped +
-                  ' | Stored lines: ' + m.history.length;
-         }
+            footer.textContent =
+                'Batch events: ' + m.batchEvents +
+                ' | Gaps: ' + m.transportGaps +
+                ' | SysEx: ' + m.sysexComplete +
+                ' | Incomplete: ' + m.sysexIncomplete +
+                ' | Queue drops: ' + m.queueDrops +
+                ' | Unsupported: ' + m.unsupported +
+                ' | Stored lines: ' + m.history.length;
+        }
 
         if (followButton) {
             if (m.following) {
@@ -294,7 +296,7 @@ function (event) {
         if (m.following) {
             m.history.push(line);
 
-            // Rolling history in normal mode<=.
+            // Rolling history in normal mode.
             if (m.history.length > NORMAL_LIMIT) {
                 m.history.splice(
                     0,
@@ -419,7 +421,6 @@ function (event) {
             });
         }
 
-        
         // ----------------------------------------
         // Clear Log button
         // ----------------------------------------
@@ -437,24 +438,21 @@ function (event) {
                 m.history = [];
 
                 // Reset display statistics.
-                m.snapshots = 0;
-                m.skipped = 0;
                 m.batchEvents = 0;
                 m.transportGaps = 0;
                 m.repeatedBatches = 0;
-                m.lastBatchText = null;
+                m.sysex = null;
+                m.sysexComplete = 0;
+                m.sysexIncomplete = 0;
 
                 // Resume automatic scrolling.
                 m.following = true;
                 m.newDuringReview = 0;
                 m.droppedDuringReview = 0;
 
-                // IMPORTANT:
-                // Keep m.lastSequence unchanged.
-                // Otherwise replayed batches could be mistaken
-                // for new MIDI messages after clearing the log.
+                // Keep m.lastSequence and lastBatchText.
+                // Old batches must not be accepted after clearing.
 
-                // Clear the textarea.
                 if (log) {
                     log.value = '';
                     log.scrollTop = 0;
@@ -472,7 +470,6 @@ function (event) {
                 updateStatus();
             });
         }
-
 
         // Follow Latest button.
         if (followButton) {
@@ -563,99 +560,272 @@ function (event) {
         el._midiMonitorUIReady = true;
     }
 
-    
     // ----------------------------------------
-    // Batched Atom/Patch MIDI notifications
+    // Versioned Atom/Patch MIDI transport (V1)
     // ----------------------------------------
+
+    function bytesFromHex(value) {
+        if (!value ||
+            !/^[0-9a-fA-F]{2}( [0-9a-fA-F]{2})*$/.test(value)) {
+            return null;
+        }
+
+        var parts = value.split(' ');
+        var result = [];
+
+        for (var j = 0; j < parts.length; j++) {
+            result.push(parseInt(parts[j], 16));
+        }
+
+        return result;
+    }
+
+    function abortSysEx(why) {
+        if (!m.sysex) return;
+
+        addLine(
+            '! SysEx #' + m.sysex.sequence +
+            ' incomplete: ' + why +
+            ' (' + m.sysex.bytes.length +
+            '/' + m.sysex.total + ' bytes)'
+        );
+
+        m.sysex = null;
+        m.sysexIncomplete++;
+    }
+
+    function acceptSequence(sequence) {
+        if (!Number.isSafeInteger(sequence) || sequence < 1) {
+            return false;
+        }
+
+        if (m.lastSequence !== null) {
+            if (sequence <= m.lastSequence) {
+                return false;
+            }
+
+            if (sequence > m.lastSequence + 1) {
+                var missing = sequence - m.lastSequence - 1;
+
+                m.transportGaps += missing;
+
+                addLine(
+                    '! ' + missing +
+                    ' MIDI events missing before #' + sequence
+                );
+            }
+        }
+
+        m.lastSequence = sequence;
+        m.batchEvents++;
+        return true;
+    }
 
     if (event.uri ===
         'https://example.org/pistomp-midi-probe#lastMidi') {
 
-        m.transportMode = true;
-
         var batchText = String(event.value || '');
 
-        // Ignore an identical batch delivered again by MODEP.
         if (batchText === m.lastBatchText) {
             m.repeatedBatches++;
-
-            var atomStatus = find('.probe-atom-status');
-
-            if (atomStatus) {
-                atomStatus.textContent =
-                    'Total: ' + m.batchEvents +
-                    ' | Gaps: ' + m.transportGaps +
-                    ' | Repeated batches: ' + m.repeatedBatches;
-            }
-
             return;
         }
 
         m.lastBatchText = batchText;
 
         var lines = batchText.split(/\r?\n/);
-       
-        var validEvents = 0;
 
-        for (var i = 0; i < lines.length; i++) {
+        if (lines[0] !== 'V1') {
+            addLine('! Unknown transport version');
+            renderLog();
+            updateStatus();
+            return;
+        }
+
+        var newEvents = 0;
+
+        for (var i = 1; i < lines.length; i++) {
             var line = lines[i].trim();
             if (!line) continue;
 
-            // Format: sequence,HEX HEX HEX
-            var match = /^(\d+),((?:[0-9A-Fa-f]{2})(?: [0-9A-Fa-f]{2}){0,2})$/.exec(line);
+            var fields = line.split(',');
 
-            if (!match) {
-                addLine('! Invalid batch record: ' + line);
+            if (fields.length < 3 ||
+                !/^(M|S|X)$/.test(fields[0]) ||
+                !/^\d+$/.test(fields[1])) {
+                addLine('! Invalid transport record');
                 continue;
             }
 
-            var sequence = Number(match[1]);
-            var midiBytes = match[2].toUpperCase();
+            var seq = Number(fields[1]);
 
-            if (m.lastSequence !== null) {
-                if (sequence > m.lastSequence + 1) {
-                    var missing =
-                        sequence - m.lastSequence - 1;
-
-                    m.transportGaps += missing;
-
-                    addLine(
-                        '! ' + missing +
-                        ' MIDI events missing before #' +
-                        sequence
-                    );
-                } else if (sequence <= m.lastSequence) {
-                    // Already processed this sequence number.
-                    continue;
-                }
+            if (!Number.isSafeInteger(seq) || seq < 1) {
+                addLine('! Invalid MIDI sequence');
+                continue;
             }
 
-            m.lastSequence = sequence;
-            m.batchEvents++;
-            validEvents++;
+            if (fields[0] === 'M') {
+                if (fields.length !== 3) {
+                    addLine('! Invalid M record');
+                    continue;
+                }
 
-            addLine(
-                '#' + sequence + '  ' + midiBytes +
-                '  | ' + decodeMidi(midiBytes)
-            );
+                var midi = bytesFromHex(fields[2]);
+
+                if (!midi ||
+                    midi.length < 1 ||
+                    midi.length > 3 ||
+                    midi[0] < 0x80) {
+                    addLine('! Invalid short MIDI record');
+                    continue;
+                }
+
+                if (m.sysex && seq > m.sysex.sequence) {
+                    abortSysEx('new MIDI before completion');
+                }
+
+                if (!acceptSequence(seq)) continue;
+
+                newEvents++;
+
+                var midiHex = fields[2].toUpperCase();
+
+                addLine(
+                    '#' + seq + '  ' + midiHex +
+                    '  | ' + decodeMidi(midiHex)
+                );
+
+            } else if (fields[0] === 'X') {
+                if (fields.length !== 3 ||
+                    !/^\d+$/.test(fields[2])) {
+                    continue;
+                }
+
+                if (m.sysex && seq > m.sysex.sequence) {
+                    abortSysEx('new event before completion');
+                }
+
+                if (!acceptSequence(seq)) continue;
+
+                newEvents++;
+
+                addLine(
+                    '! #' + seq +
+                    ' unsupported MIDI length ' +
+                    fields[2] + ' bytes'
+                );
+
+            } else {
+                if (fields.length !== 5 ||
+                    !/^\d+$/.test(fields[2]) ||
+                    !/^\d+$/.test(fields[3])) {
+                    addLine('! Invalid SysEx chunk metadata');
+                    continue;
+                }
+
+                var offset = Number(fields[2]);
+                var total = Number(fields[3]);
+                var chunk = bytesFromHex(fields[4]);
+
+                if (!chunk ||
+                    chunk.length < 1 ||
+                    chunk.length > 96 ||
+                    !Number.isSafeInteger(offset) ||
+                    !Number.isSafeInteger(total) ||
+                    total < 2 ||
+                    total > 65536 ||
+                    offset + chunk.length > total) {
+
+                    abortSysEx('invalid chunk');
+
+                    addLine(
+                        '! Invalid SysEx chunk #' + seq
+                    );
+
+                    continue;
+                }
+
+                if (!m.sysex || m.sysex.sequence !== seq) {
+                    if (m.sysex) {
+                        abortSysEx('interrupted by another SysEx');
+                    }
+
+                    if (offset !== 0) {
+                        addLine(
+                            '! SysEx #' + seq +
+                            ' starts at nonzero offset ' +
+                            offset
+                        );
+                        continue;
+                    }
+
+                    if (!acceptSequence(seq)) continue;
+
+                    m.sysex = {
+                        sequence: seq,
+                        total: total,
+                        bytes: []
+                    };
+
+                    newEvents++;
+                }
+
+                if (total !== m.sysex.total ||
+                    offset !== m.sysex.bytes.length) {
+
+                    abortSysEx('offset/length mismatch');
+                    continue;
+                }
+
+                Array.prototype.push.apply(
+                    m.sysex.bytes,
+                    chunk
+                );
+
+                if (m.sysex.bytes.length === total) {
+                    var data = m.sysex.bytes;
+
+                    if (data[0] !== 0xF0 ||
+                        data[data.length - 1] !== 0xF7) {
+
+                        abortSysEx('missing F0/F7 delimiters');
+                        continue;
+                    }
+
+                    var hexParts = [];
+
+                    for (var k = 0; k < data.length; k++) {
+                        hexParts.push(hex(data[k]));
+                    }
+
+                    addLine(
+                        '#' + seq + '  ' +
+                        hexParts.join(' ') +
+                        '  | SysEx (' +
+                        data.length + ' bytes, complete)'
+                    );
+
+                    m.sysex = null;
+                    m.sysexComplete++;
+                }
+            }
         }
 
         var atomStatus = find('.probe-atom-status');
 
         if (atomStatus) {
             atomStatus.textContent =
-                validEvents + ' new events' +
-                ' | Total: ' + m.batchEvents +
-                ' | Gaps: ' + m.transportGaps +
-                ' | Replays: ' + m.repeatedBatches;
-         }
+                newEvents + ' new events | Total: ' +
+                m.batchEvents + ' | Gaps: ' +
+                m.transportGaps + ' | Replays: ' +
+                m.repeatedBatches;
+        }
 
         renderLog();
         updateStatus();
-
         return;
     }
-   
+
     // ----------------------------------------
     // Process monitored LV2 control values
     // ----------------------------------------
@@ -664,24 +834,32 @@ function (event) {
 
     if (!Number.isFinite(value)) return;
 
-    
     // ----------------------------------------
     // Diagnostic: C-side batch count
     // ----------------------------------------
 
     if (event.symbol === 'batch_count') {
-
-        var batchCounter =
-            find('.probe-batch-count');
+        var batchCounter = find('.probe-batch-count');
 
         if (batchCounter) {
-            batchCounter.textContent =
-                String(value);
+            batchCounter.textContent = String(value);
         }
 
         return;
     }
 
+    if (event.symbol === 'queue_drops' ||
+        event.symbol === 'unsupported') {
+
+        if (event.symbol === 'queue_drops') {
+            m.queueDrops = value;
+        } else {
+            m.unsupported = value;
+        }
+
+        updateStatus();
+        return;
+    }
 
     // MIDI byte updates.
     if (
@@ -722,23 +900,8 @@ function (event) {
 
     m.count = value;
 
-    // Once native batching is active, don't duplicate events
-    // using the old numerical snapshot mechanism.
-    if (m.transportMode) {
-        updateStatus();
-        return;
-    }
-    
-    // ----------------------------------------
-    // History is supplied by Atom/Patch only
-    // ----------------------------------------
-
-    // Numerical control ports still update the
-    // message counter and latest MIDI bytes.
-    //
-    // They no longer add entries to the history,
-    // because Atom/Patch handles that separately.
-
+    // Numerical ports update the summary only;
+    // Atom/Patch owns history.
+    updateStatus();
     return;
-
 }

@@ -10,7 +10,7 @@
 <https://example.org/pistomp-midi-probe>
     a lv2:UtilityPlugin ;
     doap:name "piStomp MIDI Monitor Probe" ;
-    doap:license <https://opensource.org/licenses/MIT> ;
+    doap:license <https://spdx.org/licenses/GPL-3.0-or-later.html> ;
     patch:readable
         <https://example.org/pistomp-midi-probe#lastMidi> ;
     lv2:requiredFeature urid:map ;

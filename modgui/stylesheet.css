@@ -1,16 +1,34 @@
 
+/* ============================================
+   piStomp MIDI Monitor
+   v0.0.3 - Human Interface
+   ============================================ */
+
+
+/* --------------------------------------------
+   Main pedal
+   -------------------------------------------- */
+
 .mod-pistomp-midi-probe {
     position: relative;
     width: 500px;
     height: 450px;
     box-sizing: border-box;
+
     background: #15212c;
     color: #ebf2fa;
+
     border: 2px solid #344b60;
     border-radius: 10px;
+
     font: 14px sans-serif;
     overflow: visible;
 }
+
+
+/* --------------------------------------------
+   Drag handle
+   -------------------------------------------- */
 
 .mod-pistomp-midi-probe .mod-drag-handle {
     position: absolute;
@@ -19,11 +37,18 @@
     cursor: move;
 }
 
+
+/* --------------------------------------------
+   Main content
+   -------------------------------------------- */
+
 .mod-pistomp-midi-probe .probe-content {
     position: absolute;
     top: 12px;
     left: 18px;
     right: 12px;
+    z-index: 25;
+
     pointer-events: none;
 }
 
@@ -45,10 +70,15 @@
 }
 
 .mod-pistomp-midi-probe .probe-help {
+    margin-top: 12px;
     font-size: 11px;
     opacity: 0.7;
-    margin-top: 12px;
 }
+
+
+/* --------------------------------------------
+   MIDI input connector
+   -------------------------------------------- */
 
 .mod-pistomp-midi-probe .probe-io {
     position: absolute;
@@ -60,110 +90,66 @@
     left: -11px;
 }
 
-/* Phase 2: MIDI history display */
 
-.mod-pistomp-midi-probe .probe-content {
-    z-index: 21;
-    pointer-events: none;
-}
+/* --------------------------------------------
+   MIDI history heading
+   -------------------------------------------- */
 
 .mod-pistomp-midi-probe .probe-log-title {
     margin-top: 14px;
     margin-bottom: 6px;
+
     font-size: 11px;
     font-weight: bold;
     color: #70d9f6;
 }
 
-.mod-pistomp-midi-probe .probe-log {
-    height: 155px;
-    overflow-y: auto;
-    overflow-x: hidden;
-    background: #09131d;
-    border: 1px solid #344b60;
-    border-radius: 5px;
-    padding: 6px;
-    font: 11px monospace;
-    pointer-events: auto;
-}
 
-.mod-pistomp-midi-probe .probe-log-line {
-    padding: 3px;
-    border-bottom: 1px solid #263543;
-    white-space: nowrap;
-}
+/* --------------------------------------------
+   MIDI history textarea
 
-.mod-pistomp-midi-probe .probe-log-gap {
-    color: #ffb454;
-}
+   Must remain above the drag handle so users
+   can select, scroll and copy MIDI messages.
+   -------------------------------------------- */
 
-.mod-pistomp-midi-probe .probe-log-footer {
-    margin-top: 6px;
-    font-size: 10px;
-    color: #94a3b8;
-}
-
-/* Keep the connector accessible */
-.mod-pistomp-midi-probe .probe-io {
-    z-index: 35;
-}
-
-
-/* Keep MIDI log above the draggable surface */
-.mod-pistomp-midi-probe .probe-content {
-    position: absolute;
-    z-index: 25;
-    pointer-events: none;
-}
-
-.mod-pistomp-midi-probe .probe-log {
-    position: relative;
-    z-index: 30;
-    pointer-events: auto;
-    user-select: text;
-    -webkit-user-select: text;
-    cursor: text;
-}
-
-.mod-pistomp-midi-probe .probe-log-line {
-    user-select: text;
-    -webkit-user-select: text;
-}
-
-/* Keep the MIDI connector clickable */
-.mod-pistomp-midi-probe .probe-io {
-    z-index: 35;
-}
-
-/*test to fix text selection*/
 .mod-pistomp-midi-probe textarea.probe-log {
     display: block;
-    width: 100%;
-    box-sizing: border-box;
-    resize: none;
-    color: #e2eaf5;
-    background: #09131d;
-    border: 1px solid #344b60;
-    border-radius: 5px;
-    padding: 6px;
-    font: 11px monospace;
-    user-select: text !important;
-    -webkit-user-select: text !important;
-    pointer-events: auto;
     position: relative;
     z-index: 30;
-}
 
-.mod-pistomp-midi-probe textarea.probe-log {
+    width: 100%;
     height: 155px;
+    box-sizing: border-box;
+
+    padding: 6px;
+    border: 1px solid #344b60;
+    border-radius: 5px;
+
+    background: #09131d;
+    color: #e2eaf5;
+
+    font: 11px monospace;
     line-height: 1.5;
+
+    overflow-y: auto;
+    overflow-x: auto;
+
     white-space: pre;
-    cursor: text;
+    resize: none;
     outline: none;
+
+    pointer-events: auto;
+    cursor: text;
+
+    user-select: text !important;
+    -webkit-user-select: text !important;
 }
 
 
-/* Make selected MIDI log text clearly visible */
+/* --------------------------------------------
+   Text selection highlighting
+   -------------------------------------------- */
+
 .mod-pistomp-midi-probe textarea.probe-log::selection {
     background: #2684ff !important;
     color: #ffffff !important;
@@ -174,62 +160,92 @@
     color: #ffffff !important;
 }
 
-/* Ensure textarea receives normal text interaction */
-.mod-pistomp-midi-probe textarea.probe-log {
-    user-select: text !important;
-    -webkit-user-select: text !important;
-    cursor: text;
-    outline: none;
+
+/* --------------------------------------------
+   History status footer
+   -------------------------------------------- */
+
+.mod-pistomp-midi-probe .probe-log-footer {
+    margin-top: 6px;
+    font-size: 10px;
+    color: #94a3b8;
 }
 
 
-/* Copy All button */
+/* --------------------------------------------
+   Action button container
+   -------------------------------------------- */
 
 .mod-pistomp-midi-probe .probe-actions {
     position: relative;
     z-index: 40;
+
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 10px;
+
     margin-top: 8px;
     pointer-events: auto;
 }
 
-.mod-pistomp-midi-probe .probe-copy-btn {
-    background: #176b82;
-    color: #ffffff;
-    border: 1px solid #3299b5;
-    border-radius: 4px;
+
+/* --------------------------------------------
+   Shared button styling
+   -------------------------------------------- */
+
+.mod-pistomp-midi-probe .probe-copy-btn,
+.mod-pistomp-midi-probe .probe-clear-btn,
+.mod-pistomp-midi-probe .probe-follow-btn {
     padding: 5px 12px;
+
+    color: #ffffff;
+    border-radius: 4px;
+
     font: bold 11px Arial, sans-serif;
+
     cursor: pointer;
     pointer-events: auto;
     user-select: none;
+    -webkit-user-select: none;
+}
+
+
+/* --------------------------------------------
+   Copy All button
+   -------------------------------------------- */
+
+.mod-pistomp-midi-probe .probe-copy-btn {
+    background: #176b82;
+    border: 1px solid #3299b5;
 }
 
 .mod-pistomp-midi-probe .probe-copy-btn:hover {
     background: #2188a5;
 }
 
-.mod-pistomp-midi-probe .probe-copy-status {
-    color: #94a3b8;
-    font-size: 11px;
-    pointer-events: none;
+
+/* --------------------------------------------
+   Clear Log button
+   -------------------------------------------- */
+
+.mod-pistomp-midi-probe .probe-clear-btn {
+    background: #513039;
+    border: 1px solid #a45a69;
+}
+
+.mod-pistomp-midi-probe .probe-clear-btn:hover {
+    background: #71404d;
 }
 
 
-/* Follow Latest button */
+/* --------------------------------------------
+   Follow Latest button
+   -------------------------------------------- */
 
 .mod-pistomp-midi-probe .probe-follow-btn {
     background: #176b82;
-    color: #ffffff;
     border: 1px solid #3299b5;
-    border-radius: 4px;
-    padding: 5px 12px;
-    font: bold 11px Arial, sans-serif;
-    cursor: pointer;
-    pointer-events: auto;
-    user-select: none;
 }
 
 .mod-pistomp-midi-probe .probe-follow-btn:hover {
@@ -242,40 +258,30 @@
     color: #70f5c8;
 }
 
-.mod-pistomp-midi-probe .probe-review-status {
-    position: relative;
-    z-index: 30;
-    margin-top: 7px;
-    color: #ffb454;
-    font: 11px Arial, sans-serif;
+
+/* --------------------------------------------
+   Copy status message
+   -------------------------------------------- */
+
+.mod-pistomp-midi-probe .probe-copy-status {
+    color: #94a3b8;
+    font-size: 11px;
     pointer-events: none;
 }
 
-.mod-pistomp-midi-probe .probe-actions {
-    flex-wrap: wrap;
+
+/* --------------------------------------------
+   History review status
+   -------------------------------------------- */
+
+.mod-pistomp-midi-probe .probe-review-status {
+    position: relative;
+    z-index: 30;
+
+    margin-top: 7px;
+
+    color: #ffb454;
+    font: 11px Arial, sans-serif;
+
+    pointer-events: none;
 }
-
-.mod-pistomp-midi-probe textarea.probe-log {
-    line-height: 1.5;
-    white-space: pre;
-}
-
-
-/* Clear Log button */
-
-.mod-pistomp-midi-probe .probe-clear-btn {
-    background: #513039;
-    color: #ffffff;
-    border: 1px solid #a45a69;
-    border-radius: 4px;
-    padding: 5px 12px;
-    font: bold 11px Arial, sans-serif;
-    cursor: pointer;
-    pointer-events: auto;
-    user-select: none;
-}
-
-.mod-pistomp-midi-probe .probe-clear-btn:hover {
-    background: #71404d;
-}
-

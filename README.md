@@ -28,3 +28,27 @@ The GitHub ARM64 runner compiles native aarch64 ELF. It requires no Linux machin
 The floating-point message counter loses single-increment precision beyond 16,777,216 messages. MIDI SysEx counts as one event but the first three bytes only are presented. The latest message bytes are updated separately in the GUI and should **not** be interpreted as an atomic snapshot of one event. The number of monitoring callbacks and their frequency are host-dependent.
 
 The plugin URI is currently a development placeholder (`https://example.org/pistomp-midi-probe`); set a permanent URI before public release.
+
+### Development and AI Assistance
+
+Mod-Midi-Monitor-LV2 was developed with assistance from **OpenAI's ChatGPT**.
+
+ChatGPT was used to assist with software architecture, C and JavaScript code generation, LV2 Atom/Patch integration, interface development, debugging, and documentation.
+
+Project requirements, design decisions, integration, testing, and validation were directed and performed by the project maintainer, including testing on piStomp v3 hardware running MODEP.
+
+AI-generated contributions have been reviewed and modified during development. The project is maintained and distributed under the GNU General Public License v3.0 or later.
+
+ChatGPT and OpenAI are not affiliated with, nor do they endorse, this project.
+
+## Copyright and Licence
+
+Copyright © 2026 tothoseofus.
+
+Mod-Midi-Monitor-LV2 is distributed under the GNU General Public License version 3 or later (GPL-3.0-or-later).
+
+See the [LICENSE](LICENSE) file for the complete licence terms.
+
+Project maintainer: [tothoseofus](https://github.com/tothoseofus).
+
+This project was developed with assistance from OpenAI's ChatGPT.

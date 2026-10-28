@@ -16,6 +16,177 @@ function (event) {
         return ('0' + (v & 255).toString(16).toUpperCase()).slice(-2);
     };
 
+    
+    // ----------------------------------------
+    // Human-readable MIDI decoding
+    // ----------------------------------------
+
+    function midiNoteName(note) {
+        var names = [
+            'C', 'C#', 'D', 'D#', 'E', 'F',
+            'F#', 'G', 'G#', 'A', 'A#', 'B'
+        ];
+
+        // Middle C (MIDI note 60) is C4.
+        return names[note % 12] +
+            (Math.floor(note / 12) - 1);
+    }
+
+    function midiCCName(cc) {
+        var names = {
+            0: 'Bank Select MSB',
+            1: 'Modulation',
+            2: 'Breath Controller',
+            4: 'Foot Controller',
+            5: 'Portamento Time',
+            6: 'Data Entry MSB',
+            7: 'Channel Volume',
+            8: 'Balance',
+            10: 'Pan',
+            11: 'Expression',
+            32: 'Bank Select LSB',
+            64: 'Sustain Pedal',
+            65: 'Portamento',
+            66: 'Sostenuto',
+            67: 'Soft Pedal',
+            71: 'Resonance',
+            72: 'Release Time',
+            73: 'Attack Time',
+            74: 'Brightness',
+            91: 'Reverb Send',
+            93: 'Chorus Send',
+            120: 'All Sound Off',
+            121: 'Reset Controllers',
+            122: 'Local Control',
+            123: 'All Notes Off',
+            124: 'Omni Off',
+            125: 'Omni On',
+            126: 'Mono Mode',
+            127: 'Poly Mode'
+        };
+
+        return names[cc] || ('Controller ' + cc);
+    }
+
+    function decodeMidi(hexText) {
+        var parts = hexText.trim().split(/\s+/);
+        var bytes = [];
+
+        for (var i = 0; i < parts.length; i++) {
+            var b = parseInt(parts[i], 16);
+
+            if (!/^[0-9A-Fa-f]{2}$/.test(parts[i]) ||
+                !Number.isFinite(b)) {
+                return 'Invalid MIDI';
+            }
+
+            bytes.push(b);
+        }
+
+        if (!bytes.length) return 'Empty MIDI';
+
+        var status = bytes[0];
+        var type = status & 0xF0;
+        var channel = (status & 0x0F) + 1;
+        var d1 = bytes.length > 1 ? bytes[1] : 0;
+        var d2 = bytes.length > 2 ? bytes[2] : 0;
+
+        // System messages
+        if (status >= 0xF0) {
+            var systemNames = {
+                0xF1: 'MTC Quarter Frame',
+                0xF2: 'Song Position',
+                0xF3: 'Song Select',
+                0xF6: 'Tune Request',
+                0xF8: 'Timing Clock',
+                0xFA: 'Start',
+                0xFB: 'Continue',
+                0xFC: 'Stop',
+                0xFE: 'Active Sensing',
+                0xFF: 'System Reset'
+            };
+
+            if (status === 0xF2 && bytes.length >= 3) {
+                return 'Song Position ' +
+                    (d1 + (d2 << 7));
+            }
+
+            if (status === 0xF3 && bytes.length >= 2) {
+                return 'Song Select ' + d1;
+            }
+
+            return systemNames[status] ||
+                'System ' + hex(status);
+        }
+
+        if (status < 0x80) {
+            return 'Invalid status';
+        }
+
+        // Check channel-message length.
+        var needed =
+            (type === 0xC0 || type === 0xD0) ? 2 : 3;
+
+        if (bytes.length < needed) {
+            return 'Incomplete MIDI';
+        }
+
+        var ch = 'Ch ' + channel + '  ';
+
+        switch (type) {
+            case 0x80:
+                return 'Note Off  ' + ch +
+                    midiNoteName(d1) +
+                    '(' + d1 + ')' +
+                    '  Rel Vel ' + d2;
+
+            case 0x90:
+                if (d2 === 0) {
+                    return 'Note Off  ' + ch +
+                        midiNoteName(d1) +
+                        '(' + d1 + ')' +
+                        '  Vel 0';
+                }
+
+                return 'Note On   ' + ch +
+                    midiNoteName(d1) +
+                    '(' + d1 + ')' +
+                    '  Vel ' + d2;
+
+            case 0xA0:
+                return 'Poly Aftertouch  ' + ch +
+                    midiNoteName(d1) +
+                    '  Pressure ' + d2;
+
+            case 0xB0:
+                return 'CC  ' + ch +
+                    midiCCName(d1) +
+                    ' (' + d1 + ') = ' + d2;
+
+            case 0xC0:
+                return 'Program Change  ' + ch +
+                    'Program ' + (d1 + 1) +
+                    ' (MIDI ' + d1 + ')';
+
+            case 0xD0:
+                return 'Channel Aftertouch  ' + ch +
+                    'Pressure ' + d1;
+
+            case 0xE0:
+                var bend = d1 + (d2 << 7);
+
+                return 'Pitch Bend  ' + ch +
+                    (bend === 8192 ? 'Centre' :
+                     bend < 8192 ? 'Down' : 'Up') +
+                    ' (' + bend + ', ' +
+                    (bend - 8192) + ' signed)';
+
+            default:
+                return 'Unknown MIDI';
+        }
+    }
+
+
     var NORMAL_LIMIT = 100;
     var REVIEW_LIMIT = 5000;
 
@@ -443,7 +614,10 @@ function (event) {
             m.batchEvents++;
             validEvents++;
 
-            addLine('#' + sequence + '  ' + midiBytes);
+            addLine(
+                '#' + sequence + '  ' + midiBytes +
+                '  | ' + decodeMidi(midiBytes)
+            );
         }
 
         var atomStatus = find('.probe-atom-status');

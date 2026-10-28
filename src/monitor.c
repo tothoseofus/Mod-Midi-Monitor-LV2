@@ -2,7 +2,7 @@
  * Mod-Midi-Monitor-LV2
  * LV2 MIDI event monitor for MOD/MODEP and compatible hosts.
  *
- * Copyright (C) 2026 <copyright holder>
+ * Copyright (C) 2026 tothoseofus
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *

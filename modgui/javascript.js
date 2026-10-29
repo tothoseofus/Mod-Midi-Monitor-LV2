@@ -584,10 +584,21 @@ function (event) {
         if (!m.sysex) return;
 
         addLine(
-            '! SysEx #' + m.sysex.sequence +
-            ' incomplete: ' + why +
-            ' (' + m.sysex.bytes.length +
-            '/' + m.sysex.total + ' bytes)'
+            '#' + m.sysex.sequence +
+            '  SysEx (' +
+            m.sysex.bytes.length + '/' +
+            m.sysex.total +
+            ' bytes, incomplete: ' + why + ')'
+        );
+
+        var partialHex = [];
+
+        for (var i = 0; i < m.sysex.bytes.length; i++) {
+            partialHex.push(hex(m.sysex.bytes[i]));
+        }
+
+        addLine(
+            '      ' + partialHex.join(' ')
         );
 
         m.sysex = null;

@@ -32,7 +32,7 @@
 .mod-pistomp-midi-probe {
     position: relative;
     width: 500px;
-    height: 450px;
+    height: 480px;
     box-sizing: border-box;
 
     background: #15212c;
@@ -305,3 +305,7 @@
 
     pointer-events: none;
 }
+
+/* v0.0.5: scroll through retained event windows. */
+.mod-pistomp-midi-probe .probe-history-nav { display: flex; gap: 6px; margin-top: 5px; position: relative; z-index: 40; pointer-events: auto; }
+.mod-pistomp-midi-probe .probe-history-nav button { cursor: pointer; pointer-events: auto; }

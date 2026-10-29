@@ -24,7 +24,7 @@
 #define ATOM_MARGIN 160u
 
 enum { MIDI_IN=0, COUNT=1, STATUS=2, DATA1=3, DATA2=4,
-       NOTIFY=5, BATCH_COUNT=6, QUEUE_DROPS=7, UNSUPPORTED=8 };
+       NOTIFY=5, BATCH_COUNT=6, QUEUE_DROPS=7, UNSUPPORTED=8, HISTORY_EVENTS=9, HISTORY_MEMORY_MIB=10 };
 enum { REC_SHORT=1, REC_SYSEX=2, REC_REJECT=3 };
 
 typedef struct {
@@ -40,6 +40,7 @@ typedef struct {
     const LV2_Atom_Sequence* midi;
     LV2_Atom_Sequence* notify;
     float *count,*status,*data1,*data2,*batch_count,*queue_drops_out,*unsupported_out;
+    const float *history_events,*history_memory_mib;
     LV2_URID midi_urid,patch_set,patch_property,patch_value,batch_property;
     LV2_Atom_Forge forge;
     uint32_t num,sequence,batches_emitted,queue_drops,unsupported_events;
@@ -198,6 +199,8 @@ static void connect_port(LV2_Handle instance,uint32_t port,void* data) {
         case BATCH_COUNT:m->batch_count=(float*)data;break;
         case QUEUE_DROPS:m->queue_drops_out=(float*)data;break;
         case UNSUPPORTED:m->unsupported_out=(float*)data;break;
+        case HISTORY_EVENTS:m->history_events=(const float*)data;break;
+        case HISTORY_MEMORY_MIB:m->history_memory_mib=(const float*)data;break;
     }
 }
 static void activate(LV2_Handle instance) {(void)instance;}

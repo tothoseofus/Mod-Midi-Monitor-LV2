@@ -39,7 +39,15 @@
       lv2:default 0.0 ; lv2:minimum 0.0 ; lv2:maximum 16777215.0 ],
     [ a lv2:OutputPort, lv2:ControlPort ; lv2:index 8 ;
       lv2:name "Unsupported Events" ; lv2:symbol "unsupported" ;
-      lv2:default 0.0 ; lv2:minimum 0.0 ; lv2:maximum 16777215.0 ] ;
+      lv2:default 0.0 ; lv2:minimum 0.0 ; lv2:maximum 16777215.0 ],
+    [ a lv2:InputPort, lv2:ControlPort ; lv2:index 9 ;
+      lv2:name "History Events" ; lv2:symbol "history_events" ;
+      lv2:default 10000.0 ; lv2:minimum 100.0 ; lv2:maximum 50000.0 ;
+      lv2:portProperty lv2:integer ],
+    [ a lv2:InputPort, lv2:ControlPort ; lv2:index 10 ;
+      lv2:name "History Memory (MiB)" ; lv2:symbol "history_memory_mib" ;
+      lv2:default 16.0 ; lv2:minimum 4.0 ; lv2:maximum 64.0 ;
+      lv2:portProperty lv2:integer ] ;
     modgui:gui <https://example.org/pistomp-midi-probe/gui> .
 
 <https://example.org/pistomp-midi-probe/gui>

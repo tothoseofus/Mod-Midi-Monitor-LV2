@@ -1,0 +1,37 @@
+name: Build ARM64 LV2 probe
+on:
+  push:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v6
+      - name: Dependencies
+        run: sudo apt-get update && sudo apt-get install -y lv2-dev lilv-utils file python3-rdflib
+
+      - name: Validate LV2 metadata
+        run: |
+          python3 - <<'PY'
+          from rdflib import Graph
+
+          for filename in ["manifest.ttl", "monitor.ttl"]:
+              graph = Graph()
+              graph.parse(filename, format="turtle")
+              print(f"{filename}: valid ({len(graph)} triples)")
+          PY
+
+      - name: Compile
+        run: |
+          gcc -std=c11 -O2 -fPIC -shared -Wall -Wextra -o midi-monitor.so src/monitor.c
+          file midi-monitor.so
+      - name: stage for packageing
+        run: |
+          mkdir -p stage/pistomp-midi-probe.lv2
+          cp midi-monitor.so manifest.ttl monitor.ttl stage/pistomp-midi-probe.lv2/
+          cp -R modgui stage/pistomp-midi-probe.lv2/
+          lv2ls | head -n 5 || true
+      - uses: actions/upload-artifact@v6
+        with:
+          name: pistomp-midi-probe-aarch64
+          path: stage/

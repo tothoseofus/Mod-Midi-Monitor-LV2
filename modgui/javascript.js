@@ -799,10 +799,13 @@ function (event) {
                     }
 
                     addLine(
-                        '#' + seq + '  ' +
-                        hexParts.join(' ') +
-                        '  | SysEx (' +
+                        '#' + seq +
+                        '  SysEx (' +
                         data.length + ' bytes, complete)'
+                    );
+
+                    addLine(
+                        '      ' + hexParts.join(' ')
                     );
 
                     m.sysex = null;

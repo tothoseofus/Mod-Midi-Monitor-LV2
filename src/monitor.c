@@ -29,6 +29,7 @@ enum { REC_SHORT=1, REC_SYSEX=2, REC_REJECT=3 };
 
 typedef struct {
     uint32_t sequence;
+    uint64_t timestamp_us; /* Elapsed from LV2 activation, event-sample accurate. */
     uint32_t total;
     uint32_t offset;
     uint16_t length;
@@ -44,6 +45,8 @@ typedef struct {
     LV2_URID midi_urid,patch_set,patch_property,patch_value,batch_property;
     LV2_Atom_Forge forge;
     uint32_t num,sequence,batches_emitted,queue_drops,unsupported_events;
+    double sample_rate;
+    uint64_t frame_position;
     uint8_t last_status,last_data1,last_data2;
     MidiRecord queue[QUEUE_SIZE];
     uint32_t head,tail,queued;
@@ -55,12 +58,13 @@ static void record_push(Monitor* m, const MidiRecord* r) {
     ++m->queued;
 }
 
-static void queue_midi(Monitor* m, const uint8_t* bytes, uint32_t size) {
+static void queue_midi(Monitor* m, const uint8_t* bytes, uint32_t size, uint64_t timestamp_us) {
     const uint32_t sequence = ++m->sequence;
     if (!size) { ++m->unsupported_events; return; }
     const bool sysex = bytes[0] == 0xF0;
     MidiRecord r = {0};
     r.sequence = sequence;
+    r.timestamp_us = timestamp_us;
     r.total = size;
     if (sysex && size <= MAX_SYSEX_BYTES) {
         const uint32_t needed = (size + CHUNK_BYTES - 1u) / CHUNK_BYTES;
@@ -104,6 +108,12 @@ static bool append_u32(char* s, uint32_t* n, uint32_t cap, uint32_t x) {
     while (k) if (!append_char(s,n,cap,digits[--k])) return false;
     return true;
 }
+static bool append_u64(char* s, uint32_t* n, uint32_t cap, uint64_t x) {
+    char digits[20]; unsigned k=0;
+    do { digits[k++] = (char)('0' + x%10u); x/=10u; } while (x && k<20);
+    while (k) if (!append_char(s,n,cap,digits[--k])) return false;
+    return true;
+}
 static bool append_hex(char* s, uint32_t* n, uint32_t cap,
                        const uint8_t* data, uint32_t size) {
     static const char hexdigits[] = "0123456789ABCDEF";
@@ -117,7 +127,8 @@ static bool append_hex(char* s, uint32_t* n, uint32_t cap,
 static bool append_record(char* s, uint32_t* n, uint32_t cap, const MidiRecord* r) {
     const char kind = r->kind==REC_SHORT?'M':r->kind==REC_SYSEX?'S':'X';
     if (!append_char(s,n,cap,kind) || !append_char(s,n,cap,',') ||
-        !append_u32(s,n,cap,r->sequence) || !append_char(s,n,cap,',')) return false;
+        !append_u32(s,n,cap,r->sequence) || !append_char(s,n,cap,',') ||
+        !append_u64(s,n,cap,r->timestamp_us) || !append_char(s,n,cap,',')) return false;
     if (r->kind==REC_SYSEX) {
         if (!append_u32(s,n,cap,r->offset) || !append_char(s,n,cap,',') ||
             !append_u32(s,n,cap,r->total) || !append_char(s,n,cap,',')) return false;
@@ -135,7 +146,7 @@ static bool write_batch(Monitor* m, uint32_t capacity) {
     char text[BATCH_TEXT_SIZE];
     uint32_t used=0, records=0, index=m->tail;
     if (!append_char(text,&used,sizeof(text),'V') ||
-        !append_char(text,&used,sizeof(text),'1') ||
+        !append_char(text,&used,sizeof(text),'2') ||
         !append_char(text,&used,sizeof(text),'\n')) return false;
     const uint32_t max_text = (capacity > ATOM_MARGIN) ? capacity-ATOM_MARGIN : 0;
     const uint32_t text_limit = max_text < sizeof(text)-1 ? max_text : (uint32_t)sizeof(text)-1;
@@ -170,7 +181,7 @@ static bool write_batch(Monitor* m, uint32_t capacity) {
 
 static LV2_Handle instantiate(const LV2_Descriptor* descriptor,double rate,
                               const char* bundle,const LV2_Feature* const* features) {
-    (void)descriptor;(void)rate;(void)bundle;
+    (void)descriptor;(void)bundle;
     LV2_URID_Map* map=NULL;
     for (int i=0;features && features[i];++i)
         if (!strcmp(features[i]->URI,LV2_URID__map)) {
@@ -179,6 +190,8 @@ static LV2_Handle instantiate(const LV2_Descriptor* descriptor,double rate,
     if (!map) return NULL;
     Monitor* m=(Monitor*)calloc(1,sizeof(*m));
     if (!m) return NULL;
+    if (rate <= 0.0) { free(m); return NULL; }
+    m->sample_rate=rate;
     m->midi_urid=map->map(map->handle,LV2_MIDI__MidiEvent);
     m->patch_set=map->map(map->handle,LV2_PATCH__Set);
     m->patch_property=map->map(map->handle,LV2_PATCH__property);
@@ -203,9 +216,12 @@ static void connect_port(LV2_Handle instance,uint32_t port,void* data) {
         case HISTORY_MEMORY_MIB:m->history_memory_mib=(const float*)data;break;
     }
 }
-static void activate(LV2_Handle instance) {(void)instance;}
+static void activate(LV2_Handle instance) {
+    /* Reset only the elapsed clock; existing MIDI counters and FIFO remain untouched. */
+    Monitor* m=(Monitor*)instance;
+    m->frame_position=0;
+}
 static void run(LV2_Handle instance,uint32_t n_samples) {
-    (void)n_samples;
     Monitor* m=(Monitor*)instance;
     const uint32_t capacity=m->notify?m->notify->atom.size:0;
     if (m->midi) LV2_ATOM_SEQUENCE_FOREACH(m->midi,ev) {
@@ -215,7 +231,12 @@ static void run(LV2_Handle instance,uint32_t n_samples) {
         m->last_status=bytes[0];
         m->last_data1=ev->body.size>1?bytes[1]:0;
         m->last_data2=ev->body.size>2?bytes[2]:0;
-        queue_midi(m,bytes,ev->body.size);
+        /* LV2 Atom Sequence events carry sample offsets relative to this run().
+         * Use the input event time, not the later browser/notification time.
+         * The double conversion avoids overflow of frame_position * 1000000. */
+        const uint64_t event_frame=m->frame_position+(uint64_t)ev->time.frames;
+        const uint64_t timestamp_us=(uint64_t)((double)event_frame * 1000000.0 / m->sample_rate);
+        queue_midi(m,bytes,ev->body.size,timestamp_us);
     }
     bool written=false;
     if (m->notify && m->queued) written=write_batch(m,capacity);
@@ -232,6 +253,7 @@ static void run(LV2_Handle instance,uint32_t n_samples) {
     if (m->batch_count) *m->batch_count=(float)m->batches_emitted;
     if (m->queue_drops_out) *m->queue_drops_out=(float)m->queue_drops;
     if (m->unsupported_out) *m->unsupported_out=(float)m->unsupported_events;
+    m->frame_position += (uint64_t)n_samples;
 }
 static void deactivate(LV2_Handle instance) {(void)instance;}
 static void cleanup(LV2_Handle instance) {free(instance);}

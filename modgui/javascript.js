@@ -695,6 +695,22 @@ function (event) {
     // Versioned Atom/Patch MIDI transport (V1)
     // ----------------------------------------
 
+    // Timestamps are event times from the LV2 audio clock, not browser arrival.
+    // V2 carries integer microseconds elapsed since plugin activation.
+    function formatTimestamp(value) {
+        if (value === null || value === undefined) return '';
+        var us = Number(value);
+        if (!Number.isSafeInteger(us) || us < 0) return '';
+        var ms = Math.floor(us / 1000);
+        var millis = ms % 1000;
+        var seconds = Math.floor(ms / 1000) % 60;
+        var minutes = Math.floor(ms / 60000) % 60;
+        var hours = Math.floor(ms / 3600000);
+        function pad(n, width) { return String(n).padStart(width, '0'); }
+        return '[' + pad(hours, 2) + ':' + pad(minutes, 2) + ':' +
+            pad(seconds, 2) + '.' + pad(millis, 3) + '] ';
+    }
+
     function bytesFromHex(value) {
         if (!value ||
             !/^[0-9a-fA-F]{2}( [0-9a-fA-F]{2})*$/.test(value)) {
@@ -714,7 +730,7 @@ function (event) {
     function abortSysEx(why) {
         if (!m.sysex) return;
 
-        var incompleteHeader = '#' + m.sysex.sequence +
+        var incompleteHeader = formatTimestamp(m.sysex.timestampUs) + '#' + m.sysex.sequence +
             '  SysEx (' + m.sysex.bytes.length + '/' + m.sysex.total +
             ' bytes, incomplete: ' + why + ')';
 
@@ -771,7 +787,8 @@ function (event) {
 
         var lines = batchText.split(/\r?\n/);
 
-        if (lines[0] !== 'V1') {
+        var hasTimes = lines[0] === 'V2';
+        if (!hasTimes && lines[0] !== 'V1') {
             addLine('! Unknown transport version');
             renderLog();
             updateStatus();
@@ -794,6 +811,16 @@ function (event) {
             }
 
             var seq = Number(fields[1]);
+            var timestampUs = null;
+            if (hasTimes) {
+                if (fields.length < 4 || !/^\d+$/.test(fields[2]) ||
+                    !Number.isSafeInteger(Number(fields[2]))) {
+                    addLine('! Invalid event timestamp');
+                    continue;
+                }
+                timestampUs = Number(fields[2]);
+                fields.splice(2, 1); // Restore V1 field offsets for the existing parser.
+            }
 
             if (!Number.isSafeInteger(seq) || seq < 1) {
                 addLine('! Invalid MIDI sequence');
@@ -827,7 +854,7 @@ function (event) {
                 var midiHex = fields[2].toUpperCase();
 
                 addLine(
-                    '#' + seq + '  ' + midiHex +
+                    formatTimestamp(timestampUs) + '#' + seq + '  ' + midiHex +
                     '  | ' + decodeMidi(midiHex)
                 );
 
@@ -846,7 +873,7 @@ function (event) {
                 newEvents++;
 
                 addLine(
-                    '! #' + seq +
+                    formatTimestamp(timestampUs) + '! #' + seq +
                     ' unsupported MIDI length ' +
                     fields[2] + ' bytes'
                 );
@@ -899,6 +926,7 @@ function (event) {
 
                     m.sysex = {
                         sequence: seq,
+                        timestampUs: timestampUs,
                         total: total,
                         bytes: []
                     };
@@ -934,7 +962,7 @@ function (event) {
                         hexParts.push(hex(data[k]));
                     }
 
-                    addEntry('#' + seq + '  SysEx (' +
+                    addEntry(formatTimestamp(m.sysex.timestampUs) + '#' + seq + '  SysEx (' +
                         data.length + ' bytes, complete)\n      ' +
                         hexParts.join(' '));
 

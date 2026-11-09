@@ -56,6 +56,8 @@
     modgui:iconTemplate <modgui/icon.html> ;
     modgui:stylesheet <modgui/stylesheet.css> ;
     modgui:javascript <modgui/javascript.js> ;
+    modgui:screenshot <modgui/screenshot.png> ;
+    modgui:thumbnail <modgui/thumbnail.png> ;
     modgui:monitoredOutputs [ lv2:symbol "count" ],
         [ lv2:symbol "status" ], [ lv2:symbol "data1" ],
         [ lv2:symbol "data2" ], [ lv2:symbol "batch_count" ],

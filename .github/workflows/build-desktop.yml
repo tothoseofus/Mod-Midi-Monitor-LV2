@@ -1,0 +1,71 @@
+name: Build MOD Desktop LV2 (Windows + Linux)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  windows-x64:
+    name: Windows x64 native LV2
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-lv2
+            mingw-w64-ucrt-x86_64-binutils
+      - name: Compile Windows DLL and stage native LV2 bundle
+        run: |
+          set -eu
+          gcc -std=c11 -O2 -Wall -Wextra -shared -o midi-monitor.dll src/monitor.c
+          mkdir -p stage/pistomp-midi-probe.lv2
+          cp midi-monitor.dll monitor.ttl stage/pistomp-midi-probe.lv2/
+          sed 's/<midi-monitor.so>/<midi-monitor.dll>/' manifest.ttl > stage/pistomp-midi-probe.lv2/manifest.ttl
+          cp -R modgui stage/pistomp-midi-probe.lv2/
+          file stage/pistomp-midi-probe.lv2/midi-monitor.dll || true
+          # Check Windows export symbol, independent of browser/MOD Desktop.
+          objdump -p midi-monitor.dll | grep -q lv2_descriptor
+      - uses: actions/upload-artifact@v6
+        with:
+          name: pistomp-midi-probe-windows-x64
+          path: stage/
+          include-hidden-files: true
+
+  linux-x64:
+    name: Linux x64 native LV2
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Dependencies
+        run: sudo apt-get update && sudo apt-get install -y lv2-dev python3-rdflib
+      - name: Validate Turtle metadata
+        run: |
+          python3 - <<'PY'
+          from rdflib import Graph
+          for filename in ("manifest.ttl", "monitor.ttl"):
+              graph = Graph()
+              graph.parse(filename, format="turtle")
+              print(f"{filename}: valid ({len(graph)} triples)")
+          PY
+      - name: Compile Linux shared object and stage LV2 bundle
+        run: |
+          set -eu
+          gcc -std=c11 -O2 -fPIC -shared -Wall -Wextra -o midi-monitor.so src/monitor.c
+          mkdir -p stage/pistomp-midi-probe.lv2
+          cp midi-monitor.so manifest.ttl monitor.ttl stage/pistomp-midi-probe.lv2/
+          cp -R modgui stage/pistomp-midi-probe.lv2/
+          file stage/pistomp-midi-probe.lv2/midi-monitor.so
+          nm -D midi-monitor.so | grep -q ' lv2_descriptor$'
+      - uses: actions/upload-artifact@v6
+        with:
+          name: pistomp-midi-probe-linux-x64
+          path: stage/
+          include-hidden-files: true

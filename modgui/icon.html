@@ -30,24 +30,65 @@
             Messages: <strong class="probe-count">0</strong>
         </div>
 
-        <div class="probe-line">
-            Last bytes: <span class="probe-bytes">00 00 00</span>
-        </div>
+        <!-- Native disclosure widget; closed by default to maximise history space. -->
+        <details class="probe-diagnostics">
+            <summary class="probe-diagnostics-toggle">Diagnostics</summary>
+            <div class="probe-diagnostics-body">
+                <div class="probe-line">Last bytes: <span class="probe-bytes">00 00 00</span></div>
+                <div class="probe-line">Atom/Patch: <span class="probe-atom-status">Waiting...</span></div>
+                <div class="probe-line">C batches emitted: <strong class="probe-batch-count">0</strong></div>
+                <div class="probe-log-footer">Waiting for MIDI...</div>
+            </div>
+        </details>
 
-        <div class="probe-help">
-            Live MIDI event monitor
-        </div>
-            
-        <div class="probe-line">
-            Atom/Patch:
-           <span class="probe-atom-status">Waiting...</span>
-        </div>
+        <details class="probe-filters" aria-label="MIDI display filters">
+            <summary class="probe-filters-toggle">Display Filters</summary>
+            <div class="probe-filters-body">
+            <div class="probe-filter-head">
+                <span>DISPLAY FILTERS</span>
+                <label>Channel
+                    <select class="probe-channel-filter" title="Show all channels or one MIDI channel">
+                        <option value="0">All</option>
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                        <option value="6">6</option>
+                        <option value="7">7</option>
+                        <option value="8">8</option>
+                        <option value="9">9</option>
+                        <option value="10">10</option>
+                        <option value="11">11</option>
+                        <option value="12">12</option>
+                        <option value="13">13</option>
+                        <option value="14">14</option>
+                        <option value="15">15</option>
+                        <option value="16">16</option>
+                    </select>
+                </label>
+                <label>Format
+                    <select class="probe-display-mode" title="Display format (Copy All always exports full history)">
+                        <option value="both">Both</option>
+                        <option value="hex">Hex</option>
+                        <option value="decoded">Decoded</option>
+                    </select>
+                </label>
+            </div>
+            <div class="probe-filter-categories">
+                <label><input type="checkbox" class="probe-filter-checkbox" value="noteOn" checked> Note On</label>
+                <label><input type="checkbox" class="probe-filter-checkbox" value="noteOff" checked> Note Off</label>
+                <label><input type="checkbox" class="probe-filter-checkbox" value="cc" checked> CC</label>
+                <label><input type="checkbox" class="probe-filter-checkbox" value="pc" checked> PC</label>
+                <label><input type="checkbox" class="probe-filter-checkbox" value="bend" checked> Bend</label>
+                <label><input type="checkbox" class="probe-filter-checkbox" value="aftertouch" checked> Aftertouch</label>
+                <label><input type="checkbox" class="probe-filter-checkbox" value="sysex" checked> SysEx</label>
+                <label><input type="checkbox" class="probe-filter-checkbox" value="system" checked> System</label>
+                <label><input type="checkbox" class="probe-filter-checkbox" value="other" checked> Other</label>
+            </div>
+            </div>
+        </details>
 
-        <div class="probe-line">
-            C batches emitted:
-            <strong class="probe-batch-count">0</strong>
-        </div>
-        
         <div class="probe-log-title">MIDI MESSAGE HISTORY</div>
         
         <textarea class="probe-log"
@@ -55,10 +96,6 @@
                   spellcheck="false"
                   title="MIDI message history"></textarea>
         
-        <div class="probe-log-footer">
-            Waiting for MIDI...
-        </div>
-
         
         
         

@@ -358,13 +358,26 @@ function (event) {
             viewStart: 0,
             following: true,
             newDuringReview: 0,
-            droppedDuringReview: 0
+            droppedDuringReview: 0,
+            // Presentation-only filtering. The stored event history is never filtered.
+            filters: { noteOn: true, noteOff: true, cc: true, pc: true,
+                       bend: true, aftertouch: true, sysex: true,
+                       system: true, other: true },
+            channelFilter: 0, // 0 = any channel; system/SysEx are channel-less
+            displayMode: 'both',
+            storeRevision: 0,
+            visibleRevision: -1,
+            visibleIndices: [],
+            filterRevision: 0,
+            indexedFilterRevision: -1
         };
     }
 
     var m = el._midiMonitor;
     var log = find('textarea.probe-log');
     var footer = find('.probe-log-footer');
+    var diagnostics = find('.probe-diagnostics');
+    var filtersPanel = find('.probe-filters');
     var reviewStatus = find('.probe-review-status');
     var followButton = find('.probe-follow-btn');
     var copyButton = find('.probe-copy-btn');
@@ -372,6 +385,9 @@ function (event) {
     var clearButton = find('.probe-clear-btn');
     var olderButton = find('.probe-older-btn');
     var newerButton = find('.probe-newer-btn');
+    var channelSelect = find('.probe-channel-filter');
+    var modeSelect = find('.probe-display-mode');
+    var filterInputs = el.querySelectorAll('.probe-filter-checkbox');
 
     // ----------------------------------------
     // Status and visual updates
@@ -386,6 +402,7 @@ function (event) {
                 ' | Incomplete: ' + m.sysexIncomplete +
                 ' | Queue drops: ' + m.queueDrops +
                 ' | Unsupported: ' + m.unsupported +
+                ' | Visible: ' + displayedIndices().length +
                 ' | Retained: ' + m.store.stats().count +
                 ' | Data: ' + (m.store.stats().estimatedBytes / 1048576).toFixed(2) + ' MiB';
         }
@@ -410,46 +427,112 @@ function (event) {
                 reviewStatus.textContent =
                     'Reviewing history | ' +
                     m.newDuringReview +
-                    ' new events | Showing ' + (m.viewStart + 1) +
-                    '–' + Math.min(m.viewStart + VIEW_LIMIT, m.store.stats().count);
+                    ' new events | Showing ' + (displayedIndices().length ? m.viewStart + 1 : 0) +
+                    '–' + Math.min(m.viewStart + VIEW_LIMIT, displayedIndices().length);
             }
         }
     }
 
     // ----------------------------------------
-    // History buffer
+    // Stored event history and presentation-only filtering
     // ----------------------------------------
 
-    function addEntry(text) {
+    function midiCategory(bytes) {
+        var status = bytes[0];
+        if (status >= 0xF0) return { type: 'system', channel: 0 };
+        var channel = (status & 15) + 1;
+        var type = status & 0xF0;
+        if (type === 0x80 || (type === 0x90 && bytes[2] === 0))
+            return { type: 'noteOff', channel: channel };
+        if (type === 0x90) return { type: 'noteOn', channel: channel };
+        if (type === 0xB0) return { type: 'cc', channel: channel };
+        if (type === 0xC0) return { type: 'pc', channel: channel };
+        if (type === 0xE0) return { type: 'bend', channel: channel };
+        if (type === 0xA0 || type === 0xD0)
+            return { type: 'aftertouch', channel: channel };
+        return { type: 'other', channel: channel };
+    }
+
+    function matchesFilter(entry) {
+        var category = entry.type || 'other';
+        if (!m.filters[category]) return false;
+        return !m.channelFilter || !entry.channel ||
+            entry.channel === m.channelFilter;
+    }
+
+    function displayedIndices() {
+        if (m.visibleRevision === m.storeRevision &&
+            m.indexedFilterRevision === m.filterRevision) return m.visibleIndices;
+        var result = [];
+        var count = m.store.stats().count;
+        for (var i = 0; i < count; i++) {
+            if (matchesFilter(m.store.at(i))) result.push(i);
+        }
+        m.visibleIndices = result;
+        m.visibleRevision = m.storeRevision;
+        m.indexedFilterRevision = m.filterRevision;
+        return result;
+    }
+
+    function formatEntry(entry) {
+        var text = entry.decoded;
+        if (m.displayMode === 'both' || !text) return text;
+        if (entry.type === 'sysex') {
+            return m.displayMode === 'decoded' ? text.split('\n')[0] : text;
+        }
+        var parts = /^(.*?#\d+\s+)([0-9A-F]{2}(?: [0-9A-F]{2}){0,2})\s+\|\s+(.*)$/.exec(text);
+        if (!parts) return text; // Preserve errors and transport diagnostics.
+        return parts[1] + (m.displayMode === 'hex' ? parts[2] : parts[3]);
+    }
+
+    function addEntry(text, metadata) {
         var before = m.store.stats().evicted;
-        m.store.append({ decoded: String(text) });
+        var oldest = m.store.at(0);
+        var eventRecord = { decoded: String(text), type: 'other', channel: 0 };
+        if (metadata) {
+            eventRecord.type = metadata.type;
+            eventRecord.channel = metadata.channel || 0;
+        }
+        m.store.append(eventRecord);
+        m.storeRevision++;
         var removed = m.store.stats().evicted - before;
         if (!m.following) {
             m.newDuringReview++;
             m.droppedDuringReview += removed;
-            m.viewStart = Math.max(0, m.viewStart - removed);
+            // The historical window is addressed in FILTERED event positions.
+            if (removed && oldest && matchesFilter(oldest)) {
+                m.viewStart = Math.max(0, m.viewStart - 1);
+            }
         }
     }
 
-    function addLine(line) { addEntry(line); }
+    function addLine(line, metadata) { addEntry(line, metadata); }
 
-    // Render a bounded window, never the full retained history on every batch.
-    function historyText(start, count) {
-        return m.store.range(start, count).map(function(e) {
-            return e.decoded;
-        }).join('\n');
+    // Windowing applies after filtering, and never modifies the store.
+    function historyText(start, count, unfiltered) {
+        var result = [];
+        if (unfiltered) {
+            return m.store.range(start, count).map(function(e) {
+                return e.decoded;
+            }).join('\n');
+        }
+        var indexes = displayedIndices();
+        var end = Math.min(indexes.length, start + count);
+        for (var i = start; i < end; i++) {
+            result.push(formatEntry(m.store.at(indexes[i])));
+        }
+        return result.join('\n');
     }
 
     function renderLog() {
         if (!log) return;
-        var count = m.store.stats().count;
+        var count = displayedIndices().length;
         if (m.following) {
             m.viewStart = Math.max(0, count - VIEW_LIMIT);
         } else {
             m.viewStart = Math.min(m.viewStart, Math.max(0, count - VIEW_LIMIT));
         }
-        var value = historyText(m.viewStart, VIEW_LIMIT);
-        // Do not overwrite the textarea during review: preserve selection and scroll.
+        var value = historyText(m.viewStart, VIEW_LIMIT, false);
         if (!m.following && log.value === value) return;
         var scroll = log.scrollTop;
         var start = log.selectionStart, end = log.selectionEnd;
@@ -460,6 +543,14 @@ function (event) {
             catch (err) {}
             log.scrollTop = scroll;
         }
+    }
+
+    function filterChanged() {
+        m.filterRevision++;
+        m.viewStart = 0;
+        // Explicit filter changes refresh the view even while reviewing.
+        renderLog();
+        updateStatus();
     }
 
     // ----------------------------------------
@@ -494,6 +585,31 @@ function (event) {
     // ----------------------------------------
 
     if (!el._midiMonitorUIReady) {
+
+        if (diagnostics) {
+            // Prevent MOD's pedal drag-handle from intercepting disclosure clicks.
+            var disclosure = find('.probe-diagnostics-toggle');
+            if (disclosure) {
+                disclosure.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+                disclosure.addEventListener('click', function(e) { e.stopPropagation(); });
+                disclosure.addEventListener('touchstart', function(e) { e.stopPropagation(); }, { passive: true });
+            }
+            var syncDiagnostics = function() {
+                el.classList.toggle('probe-diagnostics-open', diagnostics.open);
+            };
+            diagnostics.addEventListener('toggle', syncDiagnostics);
+            syncDiagnostics();
+        }
+
+        if (filtersPanel) {
+            // Disclosure click must not initiate a MOD pedal drag.
+            var filtersToggle = find('.probe-filters-toggle');
+            if (filtersToggle) {
+                filtersToggle.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+                filtersToggle.addEventListener('click', function(e) { e.stopPropagation(); });
+                filtersToggle.addEventListener('touchstart', function(e) { e.stopPropagation(); }, { passive: true });
+            }
+        }
 
         if (log) {
             // Clicking inside the history protects it.
@@ -543,6 +659,7 @@ function (event) {
 
                 // Remove the displayed and stored history.
                 m.store.clear();
+                m.storeRevision++;
                 m.viewStart = 0;
 
                 // Reset display statistics.
@@ -610,7 +727,8 @@ function (event) {
                     e.preventDefault();
                     e.stopPropagation();
 
-                    var text = historyText(0, m.store.stats().count);
+                    // Copy All always exports every retained event in original V2 format.
+                    var text = historyText(0, m.store.stats().count, true);
 
                     if (!text) {
                         if (copyStatus) {
@@ -671,7 +789,7 @@ function (event) {
             enterReviewMode();
             m.viewStart = Math.max(0, Math.min(
                 m.viewStart + delta,
-                Math.max(0, m.store.stats().count - VIEW_LIMIT)));
+                Math.max(0, displayedIndices().length - VIEW_LIMIT)));
             renderLog();
             updateStatus();
         }
@@ -688,11 +806,44 @@ function (event) {
             });
         }
 
+        // All filter controls operate only on the browser's presentation layer.
+        for (var f = 0; f < filterInputs.length; f++) {
+            (function(control) {
+                control.checked = m.filters[control.value] !== false;
+                control.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+                control.addEventListener('click', function(e) { e.stopPropagation(); });
+                control.addEventListener('change', function(e) {
+                    e.stopPropagation();
+                    m.filters[control.value] = control.checked;
+                    filterChanged();
+                });
+            })(filterInputs[f]);
+        }
+        if (channelSelect) {
+            channelSelect.value = String(m.channelFilter);
+            channelSelect.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+            channelSelect.addEventListener('change', function(e) {
+                e.stopPropagation();
+                m.channelFilter = Number(channelSelect.value);
+                filterChanged();
+            });
+        }
+        if (modeSelect) {
+            modeSelect.value = m.displayMode;
+            modeSelect.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+            modeSelect.addEventListener('change', function(e) {
+                e.stopPropagation();
+                m.displayMode = modeSelect.value;
+                renderLog();
+                updateStatus();
+            });
+        }
+
         el._midiMonitorUIReady = true;
     }
 
     // ----------------------------------------
-    // Versioned Atom/Patch MIDI transport (V1)
+    // Versioned Atom/Patch MIDI transport (V1 and V2)
     // ----------------------------------------
 
     // Timestamps are event times from the LV2 audio clock, not browser arrival.
@@ -740,7 +891,8 @@ function (event) {
             partialHex.push(hex(m.sysex.bytes[i]));
         }
 
-        addEntry(incompleteHeader + '\n      ' + partialHex.join(' '));
+        addEntry(incompleteHeader + '\n      ' + partialHex.join(' '),
+            { type: 'sysex', channel: 0 });
 
         m.sysex = null;
         m.sysexIncomplete++;
@@ -855,7 +1007,7 @@ function (event) {
 
                 addLine(
                     formatTimestamp(timestampUs) + '#' + seq + '  ' + midiHex +
-                    '  | ' + decodeMidi(midiHex)
+                    '  | ' + decodeMidi(midiHex), midiCategory(midi)
                 );
 
             } else if (fields[0] === 'X') {
@@ -964,7 +1116,7 @@ function (event) {
 
                     addEntry(formatTimestamp(m.sysex.timestampUs) + '#' + seq + '  SysEx (' +
                         data.length + ' bytes, complete)\n      ' +
-                        hexParts.join(' '));
+                        hexParts.join(' '), { type: 'sysex', channel: 0 });
 
                     m.sysex = null;
                     m.sysexComplete++;
@@ -1002,6 +1154,7 @@ function (event) {
         else config.maxBytes = value * 1048576;
         try {
             m.store.configure(config);
+            m.storeRevision++;
             renderLog(); updateStatus();
         } catch (err) {
             // Ignore invalid host automation values.

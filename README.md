@@ -2,9 +2,9 @@
 
 **A MIDI event and SysEx monitor for LV2 hosts, developed and tested on piStomp v3 running MODEP.**
 
-**Current version:** `v0.0.5`
+**Current version:** `v0.1.0`
 
-**Status:** Experimental — tested on piStomp v3/MODEP and Windows MOD Desktop; Linux x64 builds are available but have not been runtime-tested.
+**Status:** Feature-complete initial release candidate. The core has been tested on piStomp v3/MODEP and Windows MOD Desktop; the latest filtering/collapsible GUI has been visually tested in Windows MOD Desktop. Linux x64 builds are available but have not been runtime-tested.
 
 Mod-Midi-Monitor-LV2 provides a visual monitor for incoming MIDI messages, including System Exclusive (SysEx) messages. It captures MIDI events through an LV2 input port and displays them in a scrolling history within the MOD/MODEP custom plugin interface.
 
@@ -23,6 +23,7 @@ The plugin appears as **piStomp MIDI Monitor**, under the **MIDI Utility** categ
 - Captures incoming MIDI events without modifying or forwarding them.
 - Displays raw MIDI messages in hexadecimal notation.
 - Provides human-readable decoding of common MIDI messages.
+- Lets you filter the visible log by message type or MIDI channel and switch between hexadecimal, decoded and combined views.
 - Supports complete SysEx messages, including large data dumps.
 - Maintains a configurable, bounded, event-based MIDI history (100–50,000 events and an estimated 4–64 MiB memory budget).
 - Includes sample-position-derived timestamps relative to plugin activation.
@@ -92,6 +93,18 @@ For incomplete SysEx messages, the monitor reports the number of bytes received,
 
 The 65,536-byte limit is an implementation limit, not a guarantee that every LV2 host can deliver a SysEx message of that size. Actual message capacity also depends on host buffers and available transport resources.
 
+### Display filters and modes (v0.1.0)
+
+The **Display Filters** panel is collapsed by default. Open it to choose which messages appear in the history window:
+
+- **Message types:** Note On, Note Off, Control Change (CC), Program Change (PC), Pitch Bend, Aftertouch, SysEx, System, and Other.
+- **Channel:** All or one of channels 1–16. Channel-less messages such as SysEx and system messages are not excluded by the channel selection.
+- **Format:** **Both** (hexadecimal and decoded short MIDI), **Hex** or **Decoded**. SysEx remains represented by its summary and data, since there is no general semantic decoder for arbitrary manufacturer payloads.
+
+A Note On message with velocity zero is treated as Note Off for filtering purposes. Both polyphonic key pressure and channel pressure are included under **Aftertouch**.
+
+**Filters affect display only.** All accepted events are still stored (until an event-count or memory-limit eviction), regardless of the filter settings. Switching a filter can reveal previously hidden retained events. The **Older 300 / Newer 300** navigation applies to matching events; **Copy All** deliberately exports the **complete unfiltered retained history**, not just visible matches and not just the current page.
+
 ### MIDI History Interface
 
 The MOD/MODEP GUI retains **whole MIDI events**, rather than independent display lines. Every complete or incomplete SysEx occupies one history record even though its summary and hex payload appear on separate lines. This prevents a rolling-history eviction from retaining half a SysEx entry.
@@ -103,9 +116,13 @@ The interface provides:
 - **Older 300** and **Newer 300** buttons for navigating a window of at most **300 events**.
 - **Copy All**, which copies **every retained event**, not merely the currently displayed 300-event window. Both modern clipboard and legacy browser-copy paths are supported.
 - **Clear Log**, which clears browser-side history and its statistics, not the running C plugin's lifetime counters.
-- Live counters, latest MIDI bytes, and Atom/Patch transport diagnostics.
+- Live message count, latest MIDI bytes, and Atom/Patch transport diagnostics.
+- Independently collapsible **Diagnostics** and **Display Filters** panels (both collapsed by default).
+- Automatically expanding/shrinking history textarea when either panel opens or closes, within the same **585px** plugin height.
 
-### History limits (v0.0.5)
+**Diagnostics** collects last MIDI bytes, Atom/Patch status, C-side batch counts, and history/transport counters. These values continue updating while the section is collapsed. The message count remains visible above the collapsible panels. The **MIDI MESSAGE HISTORY** window takes the unused vertical space, and the Copy All, Clear Log, Follow Latest and navigation controls remain below it.
+
+### History limits (introduced in v0.0.5)
 
 Two standard LV2 **input control ports** appear in the host plugin settings:
 
@@ -168,7 +185,7 @@ MODEP forwards these notifications to the custom JavaScript interface, which val
 | Browser interface | MOD/MODEP custom JavaScript |
 | Timestamps | Sample-position-derived, transmitted as integer microseconds |
 | History retention | Browser-managed, up to 50,000 complete events and estimated 64 MiB |
-| Visible history window | 300 events |
+| Visible history window | Up to 300 events matching the active display filters |
 
 The C implementation uses bounded memory and avoids dynamic memory allocation in the real-time processing callback.
 
@@ -255,7 +272,7 @@ Multiple x42 MIDI Generator instances were used for Note On/Off, CC, multi-chann
 
 The SysEx Test Generator exercised 8, 256, 4,096 and 8,192-byte SysEx and mixed Note/CC/SysEx sequences. The piStomp tests correctly reconstructed and ordered messages through 8,192 bytes. The current C implementation permits SysEx up to **65,536 bytes**, but messages larger than 8,192 bytes have not been verified in runtime tests.
 
-### v0.0.5 timestamp and history tests
+### v0.0.5 timestamp and history tests (retained in v0.1.0)
 
 The Windows MOD Desktop test setup runs the companion SysEx Test Generator in **Repeat 8 KB** mode (one 8,192-byte message every **500 ms**) into the MIDI Monitor.
 
@@ -267,6 +284,12 @@ The Windows MOD Desktop test setup runs the companion SysEx Test Generator in **
 - **Copy All** correctly exported the entire retained event history rather than only the visible window.
 
 The test logs include pauses in transmission between some captures; those are **not** treated as missing MIDI events. No test here establishes universal lossless delivery, absolute MIDI latency, or a hard cap on total JavaScript heap memory.
+
+### v0.1.0 interface checks
+
+The new message-type filters, channel selector, and Hex / Decoded / Both modes were exercised with simulated MOD GUI callbacks and mixed MIDI events, including Note On with velocity zero and SysEx. **Copy All** was checked to continue exporting retained unfiltered events. The collapsible **Diagnostics** and **Display Filters** panels and the flexible history area were visually checked in Windows MOD Desktop.
+
+These checks do not replace a full v0.1.0 regression run on piStomp ARM64 or a Linux x64 runtime test; those remain release follow-ups.
 
 ### Host bypass and diagnostics
 
@@ -298,7 +321,7 @@ Extract the **Windows x64** bundle, not the Linux/ARM64 bundle, into the directo
 
 ### Using the monitor
 
-Add **piStomp MIDI Monitor** (MIDI Utility), connect a MIDI source to its single MIDI input, and generate MIDI. The custom GUI displays hexadecimal data, decoded short messages, SysEx and relative timestamps. Adjust history limits in the host's settings controls; use **Older 300 / Newer 300**, **Following Latest**, **Copy All**, and **Clear Log** as needed. The plugin itself has **no MIDI output**, so parallel routing is necessary to feed the same source to other effects.
+Add **piStomp MIDI Monitor** (MIDI Utility), connect a MIDI source to its single MIDI input, and generate MIDI. The custom GUI displays hexadecimal data, decoded short messages, SysEx and relative timestamps. Adjust history limits in the host's settings controls. Expand **Display Filters** to select message types, channel and Hex / Decoded / Both; expand **Diagnostics** to inspect transport statistics. Both panels are collapsed by default, and opening them automatically reduces the history area. Use **Older 300 / Newer 300**, **Following Latest**, **Copy All**, and **Clear Log** as needed. The plugin itself has **no MIDI output**, so parallel routing is necessary to feed the same source to other effects.
 
 ## Current Limitations
 
@@ -310,8 +333,8 @@ Add **piStomp MIDI Monitor** (MIDI Utility), connect a MIDI source to its single
 - Numerical output-port updates may lag behind the Atom/Patch history, depending on host UI polling.
 - Host bypass and plugin restart can interrupt notification delivery; timestamps are relative to activation rather than wall-clock time.
 - The floating-point MIDI message counter loses single-count precision after 16,777,216, although other diagnostics are not necessarily subject to that particular limit.
-- Hex/Decoded/Both display modes, message-type filtering, MIDI channel filtering, and persistent export/logging are not yet implemented.
-- Custom GUI functionality requires MOD/MODEP support. Linux x64 native runtime compatibility is not yet verified.
+- The Hex / Decoded / Both options and filtering alter the visible history only; Copy All exports all retained records. Persistent file export/logging and user-defined saved filter presets are not implemented.
+- Custom GUI functionality requires MOD/MODEP support. Linux x64 native runtime compatibility is not yet verified. The final v0.1.0 GUI changes have not yet been regression-tested on piStomp ARM64.
 
 ## Development History
 
@@ -369,22 +392,27 @@ Add **piStomp MIDI Monitor** (MIDI Utility), connect a MIDI source to its single
 - Screenshot and thumbnail MOD GUI metadata/assets, required for successful startup on the tested Windows MOD Desktop version.
 - Stress-tested 8 KiB SysEx repeat streams, 500 ms timestamps, history limit changes and live review during eviction.
 
-## Planned Development
+### v0.1.0 — Filtering and Feature-Complete GUI
 
-Future improvements may include:
+- Presentation-only filtering by Note On, Note Off (including velocity-zero Note On), CC, PC, Pitch Bend, Aftertouch, SysEx, System and Other.
+- MIDI channel selection (All or 1–16), with channel-less messages unaffected by a channel filter.
+- **Hex**, **Decoded** and **Both** display modes.
+- Filter-aware 300-event navigation while **Copy All** continues to export all retained history.
+- Independent collapsible **Diagnostics** and **Display Filters** sections, collapsed by default.
+- Flexible history display automatically grows or shrinks as panels open or close without changing the overall 585px interface height.
+- Removed the redundant “Live MIDI event monitor” diagnostics line.
+- Retains the v0.0.5 DSP, LV2 port layout, V2 transport, memory limits, Windows MOD GUI image assets and all platform build workflows.
 
-- Hexadecimal / Decoded / Combined display modes.
-- Event-type filtering for Note On, Note Off, CC, PC, Pitch Bend, Aftertouch, SysEx and system messages.
-- MIDI channel filtering.
-- Expandable SysEx entries and individual-message copying.
-- More efficient presentation of large SysEx dumps.
-- Optional log export and persistent logging.
-- More extensive stress testing of concurrent SysEx and short MIDI traffic.
-- Testing of messages larger than 8,192 bytes.
-- Runtime testing of Linux x64 and additional LV2 hosts.
-- An unobtrusive indication when reviewed history entries have expired from the rolling buffer.
+## Maintenance and Possible Future Work
 
-Where practical, filtering should operate on stored events rather than discarding them during capture, so changing the display filters does not permanently lose diagnostic data.
+v0.1.0 is intended as a **feature-complete initial release**. Future changes are expected to focus on bug fixes, cross-platform verification and performance rather than adding major monitoring functions. Possible refinements include:
+
+- Regression testing of the v0.1.0 GUI on piStomp ARM64 and runtime verification on Linux x64.
+- Testing SysEx messages larger than 8,192 bytes and more simultaneous mixed traffic.
+- Optional log export or persistent logging if a concrete use case arises.
+- More compact presentation of large SysEx payloads and an indication when reviewed events have expired from the buffer.
+
+Display filtering deliberately operates on the existing retained history and never changes MIDI capture or the audio-thread transport. No LV2 DSP changes were required for the v0.1.0 GUI features.
 
 ## Compatibility
 
@@ -392,7 +420,7 @@ Where practical, filtering should operate on stored events rather than discardin
 
 **Built but not runtime-tested:** Linux x64. The MIDI core is standard C/LV2, but the full browser interface depends on MOD GUI hosting and should not be assumed available in every LV2 host.
 
-The plugin URI and LV2 port layout are consistent across the different target builds. Be sure to install the matching native binary for each platform.
+The plugin URI and 11-port LV2 layout are consistent across the different target builds. Be sure to install the matching native binary for each platform.
 
 ## Plugin URI
 

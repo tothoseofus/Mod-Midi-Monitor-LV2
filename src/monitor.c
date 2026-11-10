@@ -1,6 +1,6 @@
 /*
  * Mod-Midi-Monitor-LV2
- * Copyright (C) 2026 tothoseofus
+ * Copyright (C) 2026 Ken Spanks
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 #include <stdint.h>
@@ -15,7 +15,7 @@
 #include <lv2/midi/midi.h>
 #include <lv2/patch/patch.h>
 
-#define PLUGIN_URI "https://example.org/pistomp-midi-probe"
+#define PLUGIN_URI "https://github.com/tothoseofus/Mod-Midi-Monitor-LV2"
 #define QUEUE_SIZE 1024u
 #define CHUNK_BYTES 96u
 #define MAX_SYSEX_BYTES 65536u

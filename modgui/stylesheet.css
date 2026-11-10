@@ -2,7 +2,7 @@
  * Mod-Midi-Monitor-LV2
  * LV2 MIDI event monitor for MOD/MODEP and compatible hosts.
  *
- * Copyright (C) 2026 tothoseofus
+ * Copyright (C) 2026 Ken Spanks
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
@@ -32,7 +32,7 @@
 .mod-pistomp-midi-probe {
     position: relative;
     width: 500px;
-    height: 500px;
+    height: 585px;
     box-sizing: border-box;
 
     background: #15212c;
@@ -107,8 +107,7 @@
 }
 
 .mod-pistomp-midi-probe .probe-in {
-    left: -2px;
-    top: 20px;
+    left: -11px;
 }
 
 
@@ -139,7 +138,7 @@
     z-index: 30;
 
     width: 100%;
-    height: 155px;
+    height: 235px;
     box-sizing: border-box;
 
     padding: 6px;
@@ -360,4 +359,177 @@
     color: #8291a0;
     opacity: 0.65;
     cursor: default;
+}
+
+/* Presentation-only MIDI filters (v0.0.6 development) */
+.mod-pistomp-midi-probe .probe-filters {
+    position: relative;
+    z-index: 40;
+    margin-top: 9px;
+    padding: 6px 7px;
+    border: 1px solid #344b60;
+    border-radius: 4px;
+    background: #10202e;
+    pointer-events: auto;
+    color: #d9ecf7;
+    font: 11px Arial, sans-serif;
+}
+.mod-pistomp-midi-probe .probe-filter-head {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 7px;
+    color: #70d9f6;
+    font-weight: bold;
+}
+.mod-pistomp-midi-probe .probe-filter-head label {
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
+    color: #d9ecf7;
+    font-weight: normal;
+}
+.mod-pistomp-midi-probe .probe-filters select {
+    position: relative;
+    z-index: 41;
+    width: auto;
+    min-width: 55px;
+    height: 23px;
+    padding: 2px 5px;
+    border: 1px solid #50738b;
+    border-radius: 3px;
+    background: #243e50;
+    color: #ffffff;
+    font: 11px Arial, sans-serif;
+    pointer-events: auto;
+    -webkit-appearance: menulist;
+    appearance: auto;
+}
+.mod-pistomp-midi-probe .probe-filter-categories {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+    margin-top: 6px;
+}
+.mod-pistomp-midi-probe .probe-filter-categories label {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    cursor: pointer;
+    white-space: nowrap;
+    pointer-events: auto;
+}
+.mod-pistomp-midi-probe .probe-filter-categories input {
+    margin: 0;
+    width: 13px;
+    height: 13px;
+    accent-color: #35b6d8;
+    pointer-events: auto;
+}
+
+/* Collapsible diagnostics: retained/C-side counters keep updating while hidden.
+   The pedal's overall height stays at 585px. */
+.mod-pistomp-midi-probe .probe-diagnostics {
+    position: relative;
+    z-index: 40;
+    margin: 5px 0 0;
+    border: 1px solid #344b60;
+    border-radius: 4px;
+    background: #10202e;
+    pointer-events: auto;
+}
+.mod-pistomp-midi-probe .probe-diagnostics-toggle {
+    display: block;
+    padding: 5px 9px;
+    color: #70d9f6;
+    font: bold 11px Arial, sans-serif;
+    cursor: pointer;
+    pointer-events: auto;
+    user-select: none;
+    -webkit-user-select: none;
+    list-style: none;
+}
+.mod-pistomp-midi-probe .probe-diagnostics-toggle::-webkit-details-marker {
+    display: none;
+}
+.mod-pistomp-midi-probe .probe-diagnostics-toggle:before {
+    content: '\25B6';
+    display: inline-block;
+    width: 14px;
+    font-size: 10px;
+}
+.mod-pistomp-midi-probe .probe-diagnostics[open] .probe-diagnostics-toggle:before {
+    content: '\25BC';
+}
+.mod-pistomp-midi-probe .probe-diagnostics-body {
+    padding: 0 9px 7px;
+    color: #d9ecf7;
+}
+.mod-pistomp-midi-probe .probe-diagnostics-body .probe-line {
+    margin: 3px 0;
+    font: 11px monospace;
+}
+.mod-pistomp-midi-probe .probe-diagnostics-body .probe-help {
+    margin: 5px 0 0;
+}
+.mod-pistomp-midi-probe .probe-diagnostics-body .probe-log-footer {
+    margin-top: 5px;
+    font: 10px Arial, sans-serif;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+}
+
+/* Slightly tighter vertical spacing to fit within the existing 585px pedal. */
+.mod-pistomp-midi-probe .probe-subtitle { margin-bottom: 7px; }
+.mod-pistomp-midi-probe .probe-line { margin: 5px 0; }
+.mod-pistomp-midi-probe .probe-filters { margin-top: 6px; }
+.mod-pistomp-midi-probe .probe-log-title { margin-top: 8px; margin-bottom: 5px; }
+.mod-pistomp-midi-probe .probe-actions { margin-top: 8px; }
+
+/* v0.0.6: Flexible history area; both independent panels may be
+   opened or closed without changing the 585px pedal height. */
+.mod-pistomp-midi-probe .probe-content {
+    bottom: 12px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+.mod-pistomp-midi-probe .probe-content > * {
+    flex-shrink: 0;
+}
+.mod-pistomp-midi-probe textarea.probe-log {
+    flex: 1 1 0;
+    height: auto;
+    min-height: 75px;
+}
+/* Filter disclosure uses the same native details mechanism as Diagnostics. */
+.mod-pistomp-midi-probe .probe-filters {
+    padding: 0;
+}
+.mod-pistomp-midi-probe .probe-filters-toggle {
+    display: block;
+    padding: 6px 9px;
+    color: #70d9f6;
+    font: bold 11px Arial, sans-serif;
+    cursor: pointer;
+    pointer-events: auto;
+    user-select: none;
+    -webkit-user-select: none;
+    list-style: none;
+}
+.mod-pistomp-midi-probe .probe-filters-toggle::-webkit-details-marker {
+    display: none;
+}
+.mod-pistomp-midi-probe .probe-filters-toggle:before {
+    content: '\25B6';
+    display: inline-block;
+    width: 14px;
+    font-size: 10px;
+}
+.mod-pistomp-midi-probe .probe-filters[open] .probe-filters-toggle:before {
+    content: '\25BC';
+}
+.mod-pistomp-midi-probe .probe-filters-body {
+    padding: 0 7px 7px;
 }

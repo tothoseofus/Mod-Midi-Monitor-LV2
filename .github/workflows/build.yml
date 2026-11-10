@@ -1,6 +1,7 @@
 name: Build ARM64 LV2 probe
 on:
   push:
+    branches: [main]
   workflow_dispatch:
 jobs:
   build:

@@ -424,15 +424,15 @@ The plugin URI and 11-port LV2 layout are consistent across the different target
 
 ## Plugin URI
 
-The plugin currently uses the URI:
+The permanent plugin URI is:
 
 ```text
-https://example.org/pistomp-midi-probe
+https://github.com/tothoseofus/Mod-Midi-Monitor-LV2
 ```
 
-This is a development placeholder and should be replaced with a permanent URI before public distribution.
+This URI identifies the plugin across supported LV2 hosts. It should remain stable for future releases, even if the source repository is moved or renamed.
 
-Changing the URI may cause LV2 hosts to recognise the plugin as a different plugin, potentially affecting existing pedalboards.
+**Compatibility note:** The change from the pre-release placeholder URI (`https://example.org/pistomp-midi-probe`) to this permanent URI makes LV2 hosts recognise it as a different plugin. Existing pedalboards referencing the placeholder must replace the old plugin instance and be saved again.
 
 ## Development and AI Assistance
 
@@ -448,13 +448,13 @@ ChatGPT and OpenAI are not affiliated with, nor do they endorse, this project.
 
 ## Copyright and Licence
 
-Copyright © 2026 tothoseofus.
+Copyright © 2026 Ken Spanks.
 
 Mod-Midi-Monitor-LV2 is distributed under the **GNU General Public License version 3 or later (GPL-3.0-or-later)**.
 
 See the [LICENSE](LICENSE) file for the complete licence terms.
 
-Project maintainer: [tothoseofus](https://github.com/tothoseofus).
+Project maintainer: **Ken Spanks** ([GitHub: tothoseofus](https://github.com/tothoseofus)).
 
 ## Contributing
 

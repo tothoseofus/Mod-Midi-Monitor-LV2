@@ -16,6 +16,8 @@ Version numbers follow the project’s development milestones. Release dates are
 
 ### Changed
 
+- Established the permanent LV2 plugin URI `https://github.com/tothoseofus/Mod-Midi-Monitor-LV2`, including the GUI and Atom/Patch `#lastMidi` identifiers. Older pedalboards using the development placeholder URI must replace the plugin instance.
+- Updated project copyright and maintainer attribution to **Ken Spanks**, retaining the GPL-3.0-or-later licence and the `tothoseofus` GitHub repository.
 - Treats velocity-zero Note On as Note Off for category filtering.
 - Navigates through the visible filtered event set, retaining a 300-event window.
 - **Copy All remains unfiltered:** copies all retained events (including full SysEx), irrespective of active display filters or current history page.
@@ -24,7 +26,7 @@ Version numbers follow the project’s development milestones. Release dates are
 
 ### Compatibility
 
-- GUI-only changes in `modgui/icon.html`, `modgui/stylesheet.css` and `modgui/javascript.js`; no changes to the C DSP, LV2 ports, manifest, screenshot/thumbnail assets or GitHub Actions build workflows.
+- Filtering and layout changes affect only the MOD GUI; the v0.1.0 release also updates plugin/Patch URI constants in C, metadata and JavaScript, and attribution headers. No DSP algorithm changes, LV2 port changes, screenshot/thumbnail changes or build workflow changes.
 - Filtering and history behaviour checked with simulated browser tests; layout visually checked in Windows MOD Desktop.
 - **Pending release regression checks:** v0.1.0 runtime on piStomp ARM64; Linux x64 runtime (built in CI but not yet verified on a host).
 

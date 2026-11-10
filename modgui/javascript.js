@@ -3,7 +3,7 @@
  * Mod-Midi-Monitor-LV2
  * LV2 MIDI event monitor for MOD/MODEP and compatible hosts.
  *
- * Copyright (C) 2026 tothoseofus
+ * Copyright (C) 2026 Ken Spanks
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
@@ -209,7 +209,7 @@ function (event) {
     // Browser-side ring buffer; no memory allocation changes in audio thread.
     /*
      * Mod-Midi-Monitor-LV2 — event-based browser history store
-     * Copyright (C) 2026 tothoseofus
+     * Copyright (C) 2026 Ken Spanks
      * SPDX-License-Identifier: GPL-3.0-or-later
      *
      * Standalone module for testing. When integrated into MOD GUI, inline this
@@ -926,7 +926,7 @@ function (event) {
     }
 
     if (event.uri ===
-        'https://example.org/pistomp-midi-probe#lastMidi') {
+        'https://github.com/tothoseofus/Mod-Midi-Monitor-LV2#lastMidi') {
 
         var batchText = String(event.value || '');
 

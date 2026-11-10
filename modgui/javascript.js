@@ -206,8 +206,134 @@ function (event) {
         }
     }
 
-    var NORMAL_LIMIT = 100;
-    var REVIEW_LIMIT = 5000;
+    // Browser-side ring buffer; no memory allocation changes in audio thread.
+    /*
+     * Mod-Midi-Monitor-LV2 — event-based browser history store
+     * Copyright (C) 2026 tothoseofus
+     * SPDX-License-Identifier: GPL-3.0-or-later
+     *
+     * Standalone module for testing. When integrated into MOD GUI, inline this
+     * code within modgui/javascript.js (MOD's JS callback is not an ES module).
+     */
+    function createMidiHistory(options) {
+        'use strict';
+        options = options || {};
+        var DEFAULT_EVENTS = 10000;
+        var DEFAULT_BYTES = 16 * 1024 * 1024;
+        var MIN_EVENTS = 100;
+        var MAX_EVENTS = 50000;
+        var MIN_BYTES = 4 * 1024 * 1024;
+        var MAX_BYTES = 64 * 1024 * 1024;
+    
+        function validLimit(value, min, max, name) {
+            if (!Number.isSafeInteger(value) || value < min || value > max) {
+                throw new RangeError(name + ' must be an integer between ' + min + ' and ' + max);
+            }
+            return value;
+        }
+        var maxEvents = validLimit(options.maxEvents === undefined ? DEFAULT_EVENTS : options.maxEvents,
+                                   MIN_EVENTS, MAX_EVENTS, 'maxEvents');
+        var maxBytes = validLimit(options.maxBytes === undefined ? DEFAULT_BYTES : options.maxBytes,
+                                  MIN_BYTES, MAX_BYTES, 'maxBytes');
+    
+        // Ring buffer avoids O(n) array.shift/splice on every incoming event.
+        // Storage is allocated incrementally only as events arrive.
+        var slots = [];
+        var head = 0;
+        var count = 0;
+        var usedBytes = 0;
+        var evicted = 0;
+        var oversized = 0;
+    
+        function estimate(event) {
+            // Approximation for string data and JS object overhead; NOT physical heap usage.
+            var bytes = 128;
+            if (typeof event.hex === 'string') bytes += event.hex.length * 2;
+            if (typeof event.decoded === 'string') bytes += event.decoded.length * 2;
+            if (typeof event.reason === 'string') bytes += event.reason.length * 2;
+            if (event.bytes && typeof event.bytes.length === 'number') bytes += event.bytes.length;
+            return bytes;
+        }
+        function at(index) {
+            if (index < 0 || index >= count) return null;
+            return slots[(head + index) % slots.length].event;
+        }
+        function popOldest() {
+            if (!count) return null;
+            var item = slots[head];
+            slots[head] = undefined; // release references for GC
+            head = (head + 1) % slots.length;
+            count--;
+            usedBytes -= item.cost;
+            evicted++;
+            if (!count) { head = 0; slots = []; }
+            return item.event;
+        }
+        function grow() {
+            var capacity = slots.length;
+            var newCapacity = Math.min(maxEvents, Math.max(64, capacity * 2));
+            var grown = new Array(newCapacity);
+            for (var i = 0; i < count; i++) grown[i] = slots[(head + i) % capacity];
+            slots = grown;
+            head = 0;
+        }
+        function trim() {
+            while (count > maxEvents || usedBytes > maxBytes) popOldest();
+        }
+        function append(event) {
+            if (!event || typeof event !== 'object') throw new TypeError('event must be an object');
+            var cost = estimate(event);
+            if (cost > maxBytes) { oversized++; return false; }
+            // No mutation of the input object. Ingested records are assumed immutable.
+            if (count === slots.length && slots.length < maxEvents) grow();
+            if (count === slots.length) popOldest();
+            if (!slots.length) grow();
+            slots[(head + count) % slots.length] = { event: event, cost: cost };
+            count++;
+            usedBytes += cost;
+            trim();
+            return true;
+        }
+        function configure(config) {
+            config = config || {};
+            // Validate both before applying either; failed settings are atomic.
+            var nextEvents = validLimit(config.maxEvents === undefined ? maxEvents : config.maxEvents,
+                                        MIN_EVENTS, MAX_EVENTS, 'maxEvents');
+            var nextBytes = validLimit(config.maxBytes === undefined ? maxBytes : config.maxBytes,
+                                       MIN_BYTES, MAX_BYTES, 'maxBytes');
+            maxEvents = nextEvents;
+            maxBytes = nextBytes;
+            trim();
+            // Physical ring capacity may temporarily exceed a newly decreased maxEvents.
+            // Compact now to avoid retaining unnecessary empty slots.
+            if (slots.length > maxEvents) {
+                var compact = new Array(Math.max(count, Math.min(64, maxEvents)));
+                for (var i = 0; i < count; i++) compact[i] = slots[(head + i) % slots.length];
+                slots = compact;
+                head = 0;
+            }
+            return stats();
+        }
+        function range(start, length) {
+            start = Math.max(0, Math.floor(start));
+            length = Math.max(0, Math.floor(length));
+            var end = Math.min(count, start + length);
+            var output = [];
+            for (var i = start; i < end; i++) output.push(at(i));
+            return output;
+        }
+        function latest(n) { return range(Math.max(0, count - n), n); }
+        function clear() { slots = []; head = 0; count = 0; usedBytes = 0; }
+        function stats() {
+            return { count: count, estimatedBytes: usedBytes,
+                     maxEvents: maxEvents, maxBytes: maxBytes,
+                     evicted: evicted, oversized: oversized };
+        }
+        return { append: append, configure: configure, range: range,
+                 latest: latest, at: at, clear: clear, stats: stats };
+    }
+
+    var VIEW_LIMIT = 300;
 
     // Independent state for each plugin instance.
     if (!el._midiMonitor) {
@@ -228,7 +354,8 @@ function (event) {
             queueDrops: 0,
             unsupported: 0,
 
-            history: [],
+            store: createMidiHistory(),
+            viewStart: 0,
             following: true,
             newDuringReview: 0,
             droppedDuringReview: 0
@@ -243,6 +370,8 @@ function (event) {
     var copyButton = find('.probe-copy-btn');
     var copyStatus = find('.probe-copy-status');
     var clearButton = find('.probe-clear-btn');
+    var olderButton = find('.probe-older-btn');
+    var newerButton = find('.probe-newer-btn');
 
     // ----------------------------------------
     // Status and visual updates
@@ -257,7 +386,8 @@ function (event) {
                 ' | Incomplete: ' + m.sysexIncomplete +
                 ' | Queue drops: ' + m.queueDrops +
                 ' | Unsupported: ' + m.unsupported +
-                ' | Stored lines: ' + m.history.length;
+                ' | Retained: ' + m.store.stats().count +
+                ' | Data: ' + (m.store.stats().estimatedBytes / 1048576).toFixed(2) + ' MiB';
         }
 
         if (followButton) {
@@ -275,15 +405,13 @@ function (event) {
                 reviewStatus.textContent = '';
             } else if (m.droppedDuringReview > 0) {
                 reviewStatus.textContent =
-                    'History full! ' +
-                    m.droppedDuringReview +
-                    ' log lines not stored. ' +
-                    'Click Follow Latest to resume.';
+                    m.droppedDuringReview + ' older events evicted during review';
             } else {
                 reviewStatus.textContent =
                     'Reviewing history | ' +
                     m.newDuringReview +
-                    ' new log lines';
+                    ' new events | Showing ' + (m.viewStart + 1) +
+                    '–' + Math.min(m.viewStart + VIEW_LIMIT, m.store.stats().count);
             }
         }
     }
@@ -292,62 +420,46 @@ function (event) {
     // History buffer
     // ----------------------------------------
 
-    function addLine(line) {
-        if (m.following) {
-            m.history.push(line);
-
-            // Rolling history in normal mode.
-            if (m.history.length > NORMAL_LIMIT) {
-                m.history.splice(
-                    0,
-                    m.history.length - NORMAL_LIMIT
-                );
-            }
-        } else {
-            // Protect existing lines during review.
-            if (m.history.length < REVIEW_LIMIT) {
-                m.history.push(line);
-                m.newDuringReview++;
-            } else {
-                m.droppedDuringReview++;
-            }
+    function addEntry(text) {
+        var before = m.store.stats().evicted;
+        m.store.append({ decoded: String(text) });
+        var removed = m.store.stats().evicted - before;
+        if (!m.following) {
+            m.newDuringReview++;
+            m.droppedDuringReview += removed;
+            m.viewStart = Math.max(0, m.viewStart - removed);
         }
     }
 
-    // ----------------------------------------
-    // Textarea rendering
-    // ----------------------------------------
+    function addLine(line) { addEntry(line); }
+
+    // Render a bounded window, never the full retained history on every batch.
+    function historyText(start, count) {
+        return m.store.range(start, count).map(function(e) {
+            return e.decoded;
+        }).join('\n');
+    }
 
     function renderLog() {
         if (!log) return;
-
-        var text = m.history.join('\n');
-
+        var count = m.store.stats().count;
         if (m.following) {
-            log.value = text;
-            log.scrollTop = log.scrollHeight;
-            return;
+            m.viewStart = Math.max(0, count - VIEW_LIMIT);
+        } else {
+            m.viewStart = Math.min(m.viewStart, Math.max(0, count - VIEW_LIMIT));
         }
-
-        // Preserve the reader's scroll and selection.
-        var oldScroll = log.scrollTop;
-        var oldStart = log.selectionStart;
-        var oldEnd = log.selectionEnd;
-        var oldDirection = log.selectionDirection;
-
-        log.value = text;
-
-        try {
-            log.setSelectionRange(
-                Math.min(oldStart, text.length),
-                Math.min(oldEnd, text.length),
-                oldDirection
-            );
-        } catch (err) {
-            // Selection preservation is best effort.
+        var value = historyText(m.viewStart, VIEW_LIMIT);
+        // Do not overwrite the textarea during review: preserve selection and scroll.
+        if (!m.following && log.value === value) return;
+        var scroll = log.scrollTop;
+        var start = log.selectionStart, end = log.selectionEnd;
+        log.value = value;
+        if (m.following) log.scrollTop = log.scrollHeight;
+        else {
+            try { log.setSelectionRange(Math.min(start,value.length),Math.min(end,value.length)); }
+            catch (err) {}
+            log.scrollTop = scroll;
         }
-
-        log.scrollTop = oldScroll;
     }
 
     // ----------------------------------------
@@ -372,11 +484,6 @@ function (event) {
         m.following = true;
         m.newDuringReview = 0;
         m.droppedDuringReview = 0;
-
-        // Restore normal rolling history.
-        if (m.history.length > NORMAL_LIMIT) {
-            m.history = m.history.slice(-NORMAL_LIMIT);
-        }
 
         renderLog();
         updateStatus();
@@ -435,7 +542,8 @@ function (event) {
                 e.stopPropagation();
 
                 // Remove the displayed and stored history.
-                m.history = [];
+                m.store.clear();
+                m.viewStart = 0;
 
                 // Reset display statistics.
                 m.batchEvents = 0;
@@ -502,7 +610,7 @@ function (event) {
                     e.preventDefault();
                     e.stopPropagation();
 
-                    var text = m.history.join('\n');
+                    var text = historyText(0, m.store.stats().count);
 
                     if (!text) {
                         if (copyStatus) {
@@ -535,6 +643,7 @@ function (event) {
                         }
 
                         showResult(success);
+                        renderLog();
                     }
 
                     // Modern Clipboard API with HTTP fallback.
@@ -545,6 +654,7 @@ function (event) {
                         navigator.clipboard.writeText(text).then(
                             function() {
                                 showResult(true);
+                                renderLog();
                             },
                             function() {
                                 fallbackCopy();
@@ -557,12 +667,49 @@ function (event) {
             );
         }
 
+        function moveWindow(delta) {
+            enterReviewMode();
+            m.viewStart = Math.max(0, Math.min(
+                m.viewStart + delta,
+                Math.max(0, m.store.stats().count - VIEW_LIMIT)));
+            renderLog();
+            updateStatus();
+        }
+        if (olderButton) {
+            olderButton.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+            olderButton.addEventListener('click', function(e) {
+                e.preventDefault(); e.stopPropagation(); moveWindow(-VIEW_LIMIT);
+            });
+        }
+        if (newerButton) {
+            newerButton.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+            newerButton.addEventListener('click', function(e) {
+                e.preventDefault(); e.stopPropagation(); moveWindow(VIEW_LIMIT);
+            });
+        }
+
         el._midiMonitorUIReady = true;
     }
 
     // ----------------------------------------
     // Versioned Atom/Patch MIDI transport (V1)
     // ----------------------------------------
+
+    // Timestamps are event times from the LV2 audio clock, not browser arrival.
+    // V2 carries integer microseconds elapsed since plugin activation.
+    function formatTimestamp(value) {
+        if (value === null || value === undefined) return '';
+        var us = Number(value);
+        if (!Number.isSafeInteger(us) || us < 0) return '';
+        var ms = Math.floor(us / 1000);
+        var millis = ms % 1000;
+        var seconds = Math.floor(ms / 1000) % 60;
+        var minutes = Math.floor(ms / 60000) % 60;
+        var hours = Math.floor(ms / 3600000);
+        function pad(n, width) { return String(n).padStart(width, '0'); }
+        return '[' + pad(hours, 2) + ':' + pad(minutes, 2) + ':' +
+            pad(seconds, 2) + '.' + pad(millis, 3) + '] ';
+    }
 
     function bytesFromHex(value) {
         if (!value ||
@@ -583,13 +730,9 @@ function (event) {
     function abortSysEx(why) {
         if (!m.sysex) return;
 
-        addLine(
-            '#' + m.sysex.sequence +
-            '  SysEx (' +
-            m.sysex.bytes.length + '/' +
-            m.sysex.total +
-            ' bytes, incomplete: ' + why + ')'
-        );
+        var incompleteHeader = formatTimestamp(m.sysex.timestampUs) + '#' + m.sysex.sequence +
+            '  SysEx (' + m.sysex.bytes.length + '/' + m.sysex.total +
+            ' bytes, incomplete: ' + why + ')';
 
         var partialHex = [];
 
@@ -597,9 +740,7 @@ function (event) {
             partialHex.push(hex(m.sysex.bytes[i]));
         }
 
-        addLine(
-            '      ' + partialHex.join(' ')
-        );
+        addEntry(incompleteHeader + '\n      ' + partialHex.join(' '));
 
         m.sysex = null;
         m.sysexIncomplete++;
@@ -646,7 +787,8 @@ function (event) {
 
         var lines = batchText.split(/\r?\n/);
 
-        if (lines[0] !== 'V1') {
+        var hasTimes = lines[0] === 'V2';
+        if (!hasTimes && lines[0] !== 'V1') {
             addLine('! Unknown transport version');
             renderLog();
             updateStatus();
@@ -669,6 +811,16 @@ function (event) {
             }
 
             var seq = Number(fields[1]);
+            var timestampUs = null;
+            if (hasTimes) {
+                if (fields.length < 4 || !/^\d+$/.test(fields[2]) ||
+                    !Number.isSafeInteger(Number(fields[2]))) {
+                    addLine('! Invalid event timestamp');
+                    continue;
+                }
+                timestampUs = Number(fields[2]);
+                fields.splice(2, 1); // Restore V1 field offsets for the existing parser.
+            }
 
             if (!Number.isSafeInteger(seq) || seq < 1) {
                 addLine('! Invalid MIDI sequence');
@@ -702,7 +854,7 @@ function (event) {
                 var midiHex = fields[2].toUpperCase();
 
                 addLine(
-                    '#' + seq + '  ' + midiHex +
+                    formatTimestamp(timestampUs) + '#' + seq + '  ' + midiHex +
                     '  | ' + decodeMidi(midiHex)
                 );
 
@@ -721,7 +873,7 @@ function (event) {
                 newEvents++;
 
                 addLine(
-                    '! #' + seq +
+                    formatTimestamp(timestampUs) + '! #' + seq +
                     ' unsupported MIDI length ' +
                     fields[2] + ' bytes'
                 );
@@ -774,6 +926,7 @@ function (event) {
 
                     m.sysex = {
                         sequence: seq,
+                        timestampUs: timestampUs,
                         total: total,
                         bytes: []
                     };
@@ -809,15 +962,9 @@ function (event) {
                         hexParts.push(hex(data[k]));
                     }
 
-                    addLine(
-                        '#' + seq +
-                        '  SysEx (' +
-                        data.length + ' bytes, complete)'
-                    );
-
-                    addLine(
-                        '      ' + hexParts.join(' ')
-                    );
+                    addEntry(formatTimestamp(m.sysex.timestampUs) + '#' + seq + '  SysEx (' +
+                        data.length + ' bytes, complete)\n      ' +
+                        hexParts.join(' '));
 
                     m.sysex = null;
                     m.sysexComplete++;
@@ -835,7 +982,7 @@ function (event) {
                 m.repeatedBatches;
         }
 
-        renderLog();
+        if (m.following) renderLog();
         updateStatus();
         return;
     }
@@ -847,6 +994,20 @@ function (event) {
     var value = Math.round(Number(event.value));
 
     if (!Number.isFinite(value)) return;
+
+    if (event.symbol === 'history_events' ||
+        event.symbol === 'history_memory_mib') {
+        var config = {};
+        if (event.symbol === 'history_events') config.maxEvents = value;
+        else config.maxBytes = value * 1048576;
+        try {
+            m.store.configure(config);
+            renderLog(); updateStatus();
+        } catch (err) {
+            // Ignore invalid host automation values.
+        }
+        return;
+    }
 
     // ----------------------------------------
     // Diagnostic: C-side batch count

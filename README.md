@@ -2,9 +2,9 @@
 
 **A MIDI event and SysEx monitor for LV2 hosts, developed and tested on piStomp v3 running MODEP.**
 
-**Current version:** `v0.0.4`
+**Current version:** `v0.0.5`
 
-**Status:** Experimental — functional and under active development.
+**Status:** Experimental — tested on piStomp v3/MODEP and Windows MOD Desktop; Linux x64 builds are available but have not been runtime-tested.
 
 Mod-Midi-Monitor-LV2 provides a visual monitor for incoming MIDI messages, including System Exclusive (SysEx) messages. It captures MIDI events through an LV2 input port and displays them in a scrolling history within the MOD/MODEP custom plugin interface.
 
@@ -12,7 +12,7 @@ Unlike conventional LV2 control-port monitoring, which can miss intermediate eve
 
 The project is intended as a diagnostic and development tool for MIDI devices, software instruments, MIDI generators, controllers, configuration messages and audio-to-MIDI applications.
 
-The plugin appears in MODEP as **piStomp Midi Monitor**, under the **MIDI Utility** category.
+The plugin appears as **piStomp MIDI Monitor**, under the **MIDI Utility** category. The application has no MIDI output: connect the same MIDI source to other effects in parallel if required.
 
 ## Features
 
@@ -24,7 +24,8 @@ The plugin appears in MODEP as **piStomp Midi Monitor**, under the **MIDI Utilit
 - Displays raw MIDI messages in hexadecimal notation.
 - Provides human-readable decoding of common MIDI messages.
 - Supports complete SysEx messages, including large data dumps.
-- Maintains an ordered MIDI message history.
+- Maintains a configurable, bounded, event-based MIDI history (100–50,000 events and an estimated 4–64 MiB memory budget).
+- Includes sample-position-derived timestamps relative to plugin activation.
 - Assigns sequential numbers to incoming events.
 - Detects missing event sequences.
 - Handles bursts of multiple MIDI messages.
@@ -48,19 +49,19 @@ Note messages include both their musical note name and MIDI note number. Middle 
 For example:
 
 ```text
-#145  90 3C 64  | Note On   Ch 1  C4(60)  Vel 100
-#146  80 3C 40  | Note Off  Ch 1  C4(60)  Rel Vel 64
-#147  B0 01 7F  | CC  Ch 1  Modulation (1) = 127
-#148  C1 09     | Program Change  Ch 2  Program 10
-#149  E0 00 40  | Pitch Bend  Ch 1  Centre (8192)
-#150  BF 7B 00  | CC  Ch 16  All Notes Off (123) = 0
+[00:00:12.000] #145  90 3C 64  | Note On   Ch 1  C4(60)  Vel 100
+[00:00:12.050] #146  80 3C 40  | Note Off  Ch 1  C4(60)  Rel Vel 64
+[00:00:12.100] #147  B0 01 7F  | CC  Ch 1  Modulation (1) = 127
+[00:00:12.150] #148  C1 09     | Program Change  Ch 2  Program 10
+[00:00:12.200] #149  E0 00 40  | Pitch Bend  Ch 1  Centre (8192)
+[00:00:12.250] #150  BF 7B 00  | CC  Ch 16  All Notes Off (123) = 0
 ```
 
 The original hexadecimal bytes are retained alongside their decoded meaning.
 
 ### System Exclusive (SysEx) Support
 
-Version 0.0.4 introduces **variable-length SysEx capture and reassembly**.
+Version 0.0.4 introduced **variable-length SysEx capture and reassembly**, retained in v0.0.5.
 
 The monitor supports:
 
@@ -78,11 +79,11 @@ SysEx messages are displayed across two lines.
 For example:
 
 ```text
-#220  90 3C 64  | Note On  Ch 1  C4(60)  Vel 100
-#221  SysEx (256 bytes, complete)
+[00:00:16.000] #220  90 3C 64  | Note On  Ch 1  C4(60)  Vel 100
+[00:00:16.100] #221  SysEx (256 bytes, complete)
       F0 7D 55 05 1F 44 69 0E 33 58 ... F7
-#222  B0 01 40  | CC  Ch 1  Modulation (1) = 64
-#223  80 3C 40  | Note Off  Ch 1  C4(60)  Rel Vel 64
+[00:00:16.200] #222  B0 01 40  | CC  Ch 1  Modulation (1) = 64
+[00:00:16.300] #223  80 3C 40  | Note Off  Ch 1  C4(60)  Rel Vel 64
 ```
 
 The ellipsis in this example is illustrative. **The actual monitor displays every byte**, allowing the complete message to be copied and examined.
@@ -93,26 +94,33 @@ The 65,536-byte limit is an implementation limit, not a guarantee that every LV2
 
 ### MIDI History Interface
 
-The custom MODEP interface provides:
+The MOD/MODEP GUI retains **whole MIDI events**, rather than independent display lines. Every complete or incomplete SysEx occupies one history record even though its summary and hex payload appear on separate lines. This prevents a rolling-history eviction from retaining half a SysEx entry.
 
-- A scrolling MIDI message history.
-- Automatic scrolling to the latest event.
-- Protected history review when selecting or scrolling through existing messages.
-- **Copy All** to copy the retained history.
-- **Clear Log** to clear displayed history.
-- **Follow Latest** to resume automatic scrolling.
-- A live MIDI event counter.
-- Display of the latest MIDI bytes.
-- Atom/Patch transport diagnostics.
-- SysEx completion, queue-drop and unsupported-event statistics.
+The interface provides:
 
-During normal operation, the interface retains the most recent **100 history lines**.
+- A scrolling, timestamped event history with hexadecimal bytes and decoded short MIDI messages.
+- **Following Latest** to keep the newest entries visible, and a review mode to preserve the current displayed text while new traffic arrives.
+- **Older 300** and **Newer 300** buttons for navigating a window of at most **300 events**.
+- **Copy All**, which copies **every retained event**, not merely the currently displayed 300-event window. Both modern clipboard and legacy browser-copy paths are supported.
+- **Clear Log**, which clears browser-side history and its statistics, not the running C plugin's lifetime counters.
+- Live counters, latest MIDI bytes, and Atom/Patch transport diagnostics.
 
-When reviewing the log, it can retain up to **5,000 lines** to avoid immediately discarding information being examined.
+### History limits (v0.0.5)
 
-The history is held in browser memory and is not automatically saved to disk.
+Two standard LV2 **input control ports** appear in the host plugin settings:
 
-SysEx messages currently occupy two history lines: a summary and the hexadecimal payload. Because history retention is line-based, these may occasionally be separated when the rolling history reaches its limit.
+| Port | Symbol | Range | Default |
+|---|---|---|---|
+| 9 — History Events | `history_events` | 100–50,000 events | 10,000 |
+| 10 — History Memory (MiB) | `history_memory_mib` | 4–64 MiB | 16 MiB |
+
+The browser JavaScript manages these settings, retention and eviction; the C audio thread does **not** allocate memory proportional to these values. If either limit is exceeded, the oldest complete event records are discarded first. Lowering limits applies to already retained history; raising them does not recover previously discarded entries.
+
+**The MiB budget is an estimate** of retained payload data and JavaScript bookkeeping, *not* a hard ceiling on total browser memory or JavaScript engine heap consumption. A 4 MiB history limit typically retains fewer than 100 complete 8 KiB SysEx messages because hexadecimal text and record overhead are included.
+
+Reviewing a scrolled log does **not** stop event capture or history eviction. The visible text can remain unchanged until navigating/refreshing, at which point records that have already expired disappear from the view. That is expected and is distinct from a transport sequence gap.
+
+Host settings persistence has been tested on piStomp, including pedalboard changes, reboot, and separate plugin instances. The history itself remains in browser memory and is **not persisted** to disk.
 
 ## How It Works
 
@@ -150,7 +158,7 @@ MODEP forwards these notifications to the custom JavaScript interface, which val
 
 | Parameter | Value |
 |---|---|
-| Transport protocol | Versioned V1 |
+| Transport protocol | Versioned **V2**, with V1 browser decoding compatibility |
 | Transport mechanism | LV2 Atom/Patch |
 | Queue capacity | 1,024 transport records |
 | Short MIDI message length | 1–3 bytes |
@@ -158,6 +166,9 @@ MODEP forwards these notifications to the custom JavaScript interface, which val
 | Maximum supported SysEx message | 65,536 bytes |
 | Atom output buffer minimum requested | 4,096 bytes |
 | Browser interface | MOD/MODEP custom JavaScript |
+| Timestamps | Sample-position-derived, transmitted as integer microseconds |
+| History retention | Browser-managed, up to 50,000 complete events and estimated 64 MiB |
+| Visible history window | 300 events |
 
 The C implementation uses bounded memory and avoids dynamic memory allocation in the real-time processing callback.
 
@@ -167,27 +178,27 @@ Each SysEx message receives one MIDI event sequence number, regardless of how ma
 
 ### Versioned Transport Records
 
-Short MIDI records use a format such as:
+v0.0.5 uses transport protocol **V2**. Each message carries a MIDI event sequence and an integer timestamp in **microseconds**, derived from the host's audio sample frames. For example:
 
 ```text
-V1
-M,145,90 3C 64
-M,146,80 3C 40
+V2
+M,145,12000000,90 3C 64
+M,146,12050000,80 3C 40
 ```
 
-SysEx messages use chunk records with the event sequence, byte offset and declared total length:
+SysEx data is transported in 96-byte chunks using one event sequence number and one timestamp for every chunk of the same incoming SysEx event:
 
 ```text
-V1
-S,147,0,8,F0 7D 01 02
-S,147,4,8,03 04 05 F7
+V2
+S,147,12100000,0,8,F0 7D 01 02
+S,147,12100000,4,8,03 04 05 F7
 ```
 
-In this example, both chunks belong to event `#147`.
+The browser reconstructs the original eight-byte SysEx and displays it as one timestamped event. The `X` transport record represents unsupported/unrepresentable messages. The browser decoder also accepts **V1** records for backward compatibility, although the current C plugin emits V2.
 
-The browser reconstructs the original eight-byte SysEx message and displays it as a single MIDI event.
+### Timestamp interpretation
 
-The protocol also provides reporting for unsupported messages.
+History timestamps use `[HH:MM:SS.mmm]` and represent **elapsed plugin audio time since LV2 activation**, not the operating system's local clock. Because they are derived from event frame positions rather than JavaScript receive time, browser update delays should not distort the event spacing. The sample-derived clock may restart when the LV2 instance is reactivated. Timestamps are displayed to millisecond precision; the protocol carries integer microseconds.
 
 ### Sequence Tracking
 
@@ -236,133 +247,71 @@ Consequently, the Messages and Batch events totals may differ after clearing the
 
 ## Testing and Validation
 
-Development and runtime testing have been performed on:
+Development and testing have been carried out on **piStomp v3 / Raspberry Pi 5 running MODEP** and **Windows x64 MOD Desktop**. A Linux x64 artifact is produced in CI; native Linux runtime behaviour has not yet been verified.
 
-- **Hardware:** piStomp v3, Raspberry Pi 5 (ARM64).
-- **Software:** MODEP on piStomp OS.
-- **MIDI sources:** x42 MIDI Generator and a purpose-built LV2 SysEx Test Generator.
+### Short MIDI and mixed traffic (earlier versions)
 
-### Short MIDI Stress Testing
+Multiple x42 MIDI Generator instances were used for Note On/Off, CC, multi-channel and dense bursts. A four-generator test exceeded **35,000 messages with no reported sequence gaps**; a separate five-generator test exceeded **26,000 with no detected gaps or replays**. These are empirical results for the tested setup, not a promise of lossless delivery in every host.
 
-The monitor has been tested using multiple simultaneous x42 MIDI Generator instances.
+The SysEx Test Generator exercised 8, 256, 4,096 and 8,192-byte SysEx and mixed Note/CC/SysEx sequences. The piStomp tests correctly reconstructed and ordered messages through 8,192 bytes. The current C implementation permits SysEx up to **65,536 bytes**, but messages larger than 8,192 bytes have not been verified in runtime tests.
 
-Testing included:
+### v0.0.5 timestamp and history tests
 
-- Note On and Note Off events.
-- Control Change messages.
-- Multiple MIDI channels.
-- Dense MIDI bursts.
-- Simultaneous MIDI generators at high event rates.
-- Continuous monitoring over tens of thousands of messages.
+The Windows MOD Desktop test setup runs the companion SysEx Test Generator in **Repeat 8 KB** mode (one 8,192-byte message every **500 ms**) into the MIDI Monitor.
 
-One test using four MIDI Generators exceeded **35,000 MIDI events with no reported sequence gaps**, while another test using five generators recorded more than **26,000 events with no detected transport gaps or replays**.
+- At the **16 MiB** history setting, a capture of **214 complete 8,192-byte SysEx messages** showed zero sequence gaps, zero incomplete messages and 500 ms spacing between adjacent events in the continuous part of the test.
+- Reducing the memory setting to **4 MiB** retained **84 complete 8,192-byte SysEx events** at approximately **3.96 MiB** estimated stored data, while older entries were evicted.
+- A further capture while reviewing/scrolling and using **Older 300** retained **84 consecutive events (#232–#315)** with no missing or duplicate sequence numbers; all messages were marked complete and their hexadecimal payloads were validated. Older entries vanished from the refreshed view only after they expired from the rolling buffer.
+- Count-limit increases/decreases during traffic were tested on piStomp; increasing the limit preserved still-retained existing records and did not resurrect already evicted records.
+- Settings persistence was verified on piStomp, including reboot, pedalboard changes and separate instances.
+- **Copy All** correctly exported the entire retained event history rather than only the visible window.
 
-These tests provide encouraging evidence of reliable short-message delivery in the tested environment, but do not establish guaranteed lossless transport under all workloads.
+The test logs include pauses in transmission between some captures; those are **not** treated as missing MIDI events. No test here establishes universal lossless delivery, absolute MIDI latency, or a hard cap on total JavaScript heap memory.
 
-### SysEx Testing — v0.0.4
+### Host bypass and diagnostics
 
-A separate LV2 SysEx Test Generator was developed to provide deterministic test messages.
-
-The following scenarios were tested:
-
-| Test | Message size | Result |
-|---|---|---|
-| Small SysEx | 8 bytes | Passed |
-| Medium SysEx | 256 bytes | Passed |
-| Large SysEx | 4,096 bytes | Passed |
-| Large SysEx | 8,192 bytes | Passed |
-| Mixed MIDI and SysEx | 256-byte SysEx with Note On, CC and Note Off | Passed |
-
-Testing demonstrated:
-
-- Complete SysEx reconstruction through the Atom/Patch transport.
-- Preservation of hexadecimal message contents.
-- Correct `F0` and `F7` delimiters.
-- Correct message lengths.
-- Correct deterministic payload patterns.
-- Preservation of event order relative to short MIDI messages.
-- No reported transport gaps or incomplete SysEx messages in the completed test sequence.
-
-In one test, all **20 MIDI events**, including **11 SysEx messages**, were received and displayed, with zero reported transport gaps.
-
-The test confirmed successful operation with SysEx messages up to **8,192 bytes** on the tested piStomp configuration.
-
-Messages larger than 8,192 bytes remain unverified in runtime testing, despite the higher implementation limit.
-
-### Bypass Behaviour
-
-When plugins are switched off or on, MODEP may generate MIDI cleanup messages, including:
-
-- CC 123 — All Notes Off.
-- CC 120 — All Sound Off.
-
-These messages may be generated across all 16 MIDI channels.
-
-During monitor bypass transitions, cleanup events can be counted by the C plugin without their Atom/Patch notifications reaching the browser.
-
-This can produce sequence gaps, sometimes in multiples of 32 messages.
-
-The monitor retains these gap reports rather than hiding them.
-
-An earlier development version exhibited repeated Patch notifications because of incorrect empty Atom output-buffer handling. This was corrected in v0.0.2.
+MODEP may emit MIDI cleanup messages when plugins are switched on/off (notably CC 123 *All Notes Off* and CC 120 *All Sound Off*, potentially across all 16 channels). Bypass transitions may interrupt Atom/Patch forwarding and create reported sequence gaps, sometimes in groups of 32. The monitor reports these discontinuities rather than concealing them. Earlier repeated Patch notifications from incorrect empty Atom buffer handling were corrected in v0.0.2.
 
 ## Building
 
-The project is designed to be built using **GitHub Actions**, without requiring a local Linux development environment or compilation directly on the piStomp.
+The repository uses **GitHub Actions**; neither local Linux compilation nor building on the piStomp itself is required.
 
-### GitHub Actions
+### Build targets
 
-1. Open the repository's **Actions** tab.
-2. Select the ARM64 LV2 build workflow.
-3. Run the workflow against the desired branch.
-4. Download the generated build artifact.
-5. Extract the `.lv2` plugin bundle from the artifact.
+| Target | Build environment | Binary | Test status |
+|---|---|---|---|
+| piStomp v3 / Raspberry Pi 5 ARM64 | Existing ARM64 workflow | `midi-monitor.so` | Runtime tested on piStomp / MODEP |
+| Windows x64 | Windows runner, MSYS2 UCRT64 with LV2 headers | `midi-monitor.dll` | Runtime tested in Windows MOD Desktop |
+| Linux x64 | Ubuntu runner with `lv2-dev` | `midi-monitor.so` | CI build available; runtime testing pending |
 
-The workflow produces a native ARM64 LV2 plugin for the Raspberry Pi 5.
-
-The bundle contains the compiled shared library, LV2 metadata and MOD GUI resources.
+For GitHub Actions, select **Actions**, choose the platform workflow, choose the desired branch under **Run workflow**, then download the corresponding build artifact. The staged archive contains a `pistomp-midi-probe.lv2` folder with the native binary, `manifest.ttl`, `monitor.ttl` and the complete `modgui/` resources.
 
 ### Installation on piStomp
 
-Copy the generated `.lv2` folder into the piStomp user plugin directory.
+Copy the generated `.lv2` directory into the user plugin location (commonly `/home/pistomp/data/.lv2/`), then restart/rescan the host. If upgrading metadata or GUI resources does not refresh an existing pedalboard, remove and re-add the plugin.
 
-For standard installations:
+### Windows MOD Desktop
 
-```text
-/home/pistomp/data/.lv2/
-```
+Extract the **Windows x64** bundle, not the Linux/ARM64 bundle, into the directory that MOD Desktop scans for user LV2 plugins (commonly `%APPDATA%\LV2\`, depending on installation), and restart MOD Desktop. Keep only one installed bundle for the URI.
 
-Restart or rescan the LV2 host as required.
+**Important for Windows:** The custom GUI's TTL registration must include `modgui:screenshot <modgui/screenshot.png>` and `modgui:thumbnail <modgui/thumbnail.png>`, **and both PNG files must actually exist**. The full GUI was observed to crash Windows MOD Desktop during plugin-list loading when these assets were missing. Adding both assets and declarations resolved the startup failure in runtime testing. Keep these files in the source repository so the Windows, Linux and ARM64 workflows all package them.
 
-If replacing an earlier installed version, remove and re-add the plugin to the pedalboard if the interface or plugin metadata does not refresh correctly.
+### Using the monitor
 
-### Using the Monitor
-
-1. Add **piStomp Midi Monitor** from MODEP's **MIDI Utility** category.
-2. Connect a MIDI source to the monitor's MIDI input.
-3. Generate ordinary MIDI or SysEx messages.
-4. Observe the messages in the history window.
-5. Use Copy All, Clear Log and Follow Latest as required.
-
-The plugin is a monitor only. It does not provide a MIDI output port.
-
-Where supported by the host, the same MIDI source can be routed in parallel to other plugins.
+Add **piStomp MIDI Monitor** (MIDI Utility), connect a MIDI source to its single MIDI input, and generate MIDI. The custom GUI displays hexadecimal data, decoded short messages, SysEx and relative timestamps. Adjust history limits in the host's settings controls; use **Older 300 / Newer 300**, **Following Latest**, **Copy All**, and **Clear Log** as needed. The plugin itself has **no MIDI output**, so parallel routing is necessary to feed the same source to other effects.
 
 ## Current Limitations
 
-- SysEx messages are supported up to an implementation maximum of 65,536 bytes; the largest successfully tested message is 8,192 bytes.
-- The host must deliver the complete incoming MIDI event to the plugin. Messages rejected or truncated upstream cannot be reconstructed.
-- The bounded transport queue can overflow under sufficiently demanding workloads.
-- Incomplete SysEx data is reported rather than silently treated as a valid complete message.
-- The browser history is held in memory and is not persistent.
-- Large SysEx dumps can produce very long hexadecimal lines, requiring horizontal scrolling.
-- SysEx summaries and payloads are stored as separate history lines.
-- Numerical output-control updates can temporarily lag behind Atom/Patch history updates.
-- Atom/Patch delivery can be interrupted during plugin bypass transitions.
-- The floating-point MIDI message counter loses single-increment precision beyond 16,777,216.
-- MIDI timestamps are not yet included in the history.
-- Display modes, event-type filtering and channel filtering are not yet implemented.
-- Custom GUI functionality depends on MOD/MODEP host support.
+- Maximum *implemented* SysEx event length is 65,536 bytes; the largest **runtime-tested** size is 8,192 bytes. Hosts must deliver a complete event upstream for it to be reconstructed.
+- Bounded real-time transport storage can overflow under sufficiently demanding workloads. Queue drops and incomplete messages are reported.
+- The history lives in the browser and is not saved between sessions. Its memory-budget setting is an **estimate**, not a full browser-heap limit.
+- Very long SysEx hex lines require horizontal scrolling.
+- When reviewing older history, expired entries remain visible in the unchanged text until the view refreshes; navigating then shows only currently retained records.
+- Numerical output-port updates may lag behind the Atom/Patch history, depending on host UI polling.
+- Host bypass and plugin restart can interrupt notification delivery; timestamps are relative to activation rather than wall-clock time.
+- The floating-point MIDI message counter loses single-count precision after 16,777,216, although other diagnostics are not necessarily subject to that particular limit.
+- Hex/Decoded/Both display modes, message-type filtering, MIDI channel filtering, and persistent export/logging are not yet implemented.
+- Custom GUI functionality requires MOD/MODEP support. Linux x64 native runtime compatibility is not yet verified.
 
 ## Development History
 
@@ -409,6 +358,17 @@ Where supported by the host, the same MIDI source can be routed in parallel to o
 - Display name updated to **piStomp Midi Monitor**.
 - MODEP classification updated to **MIDI Utility**.
 
+### v0.0.5 — Timestamped, Bounded Event History and Desktop Builds
+
+- Structured, **whole-event** browser history: SysEx summary and payload are evicted together.
+- Configurable limits with host control ports `history_events` (100–50,000) and `history_memory_mib` (4–64 MiB).
+- 300-event windowed display, **Older 300 / Newer 300** navigation and review-safe scrolling.
+- **Copy All** exports all retained records, including entries outside the visible window.
+- Sample-frame timestamps and the **V2** transport protocol; V1 decoding retained for compatibility.
+- Windows x64 and Linux x64 GitHub Actions builds alongside existing ARM64 build.
+- Screenshot and thumbnail MOD GUI metadata/assets, required for successful startup on the tested Windows MOD Desktop version.
+- Stress-tested 8 KiB SysEx repeat streams, 500 ms timestamps, history limit changes and live review during eviction.
+
 ## Planned Development
 
 Future improvements may include:
@@ -416,28 +376,23 @@ Future improvements may include:
 - Hexadecimal / Decoded / Combined display modes.
 - Event-type filtering for Note On, Note Off, CC, PC, Pitch Bend, Aftertouch, SysEx and system messages.
 - MIDI channel filtering.
-- Structured history storage to keep complete SysEx messages together.
 - Expandable SysEx entries and individual-message copying.
 - More efficient presentation of large SysEx dumps.
-- MIDI event timestamps.
 - Optional log export and persistent logging.
 - More extensive stress testing of concurrent SysEx and short MIDI traffic.
 - Testing of messages larger than 8,192 bytes.
-- Additional LV2 host and platform compatibility testing.
+- Runtime testing of Linux x64 and additional LV2 hosts.
+- An unobtrusive indication when reviewed history entries have expired from the rolling buffer.
 
 Where practical, filtering should operate on stored events rather than discarding them during capture, so changing the display filters does not permanently lose diagnostic data.
 
 ## Compatibility
 
-The plugin is intended for LV2-compatible hosts, with primary development and testing conducted on **piStomp v3 running MODEP on Raspberry Pi 5**.
+**Tested:** piStomp v3 running MODEP on Raspberry Pi 5 (ARM64); MOD Desktop on Windows x64 with the full custom GUI, including the screenshot and thumbnail assets.
 
-The MIDI monitoring core is written in C using LV2 interfaces.
+**Built but not runtime-tested:** Linux x64. The MIDI core is standard C/LV2, but the full browser interface depends on MOD GUI hosting and should not be assumed available in every LV2 host.
 
-The custom graphical interface relies on MOD/MODEP GUI facilities. Other LV2 hosts may load the plugin without providing the same browser-based interface.
-
-Compatibility with additional ARM64, Linux x86-64 or Windows environments has not yet been established through runtime testing.
-
-The current GitHub Actions workflow targets the ARM64 piStomp environment.
+The plugin URI and LV2 port layout are consistent across the different target builds. Be sure to install the matching native binary for each platform.
 
 ## Plugin URI
 
@@ -457,7 +412,7 @@ Mod-Midi-Monitor-LV2 was developed with assistance from **OpenAI's ChatGPT**.
 
 ChatGPT was used to assist with software architecture, C and JavaScript code generation, LV2 Atom/Patch integration, SysEx transport and reassembly, interface development, debugging and documentation.
 
-Project requirements, design decisions, integration, testing and validation were directed and performed by the project maintainer, including runtime testing on piStomp v3 hardware running MODEP.
+Project requirements, design decisions, integration, testing and validation were directed and performed by the project maintainer, including runtime testing on piStomp v3 hardware running MODEP and Windows MOD Desktop.
 
 AI-generated contributions have been reviewed and modified during development.
 

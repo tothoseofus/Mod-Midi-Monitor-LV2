@@ -1,6 +1,8 @@
+
 name: Publish Release
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - 'v*'
@@ -9,17 +11,67 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: publish-release
   cancel-in-progress: false
 
 jobs:
   validate:
-    name: Validate release tag
+    name: Validate release version
     runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+
     steps:
       - uses: actions/checkout@v6
-      - name: Check VERSION matches tag
-        run: python3 tools/stamp_version.py
+
+      - name: Validate VERSION and release target
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+
+          # Manual releases must come from main.
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+              echo "Manual releases must run from main."
+              exit 1
+            fi
+          fi
+
+          # Validate VERSION and any existing tag.
+          python3 tools/stamp_version.py
+
+          VERSION=$(cat VERSION)
+          TAG="v${VERSION}"
+
+          # For tag-triggered builds, the tag must match.
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            if [ "$GITHUB_REF_NAME" != "$TAG" ]; then
+              echo "Tag does not match VERSION."
+              exit 1
+            fi
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+          # Never overwrite an existing release.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists."
+            exit 1
+          fi
+
+          # Manual releases must use a new tag.
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            if gh api \
+              "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" \
+              >/dev/null 2>&1; then
+              echo "Tag $TAG already exists."
+              exit 1
+            fi
+          fi
+
+          echo "Validated release $TAG"
 
   arm64:
     needs: validate
@@ -31,29 +83,58 @@ jobs:
 
   publish:
     name: Package and publish release
-    needs: [arm64, desktop]
+    needs: [validate, arm64, desktop]
     runs-on: ubuntu-24.04
+
     permissions:
       contents: write
+
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v6
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v6
         with:
           pattern: v*-pistomp-midi-probe-*-${{ github.run_number }}
           path: downloaded
-      - name: Verify artifacts and prepare release ZIPs
-        run: |
-          python3 tools/package_release.py --tag "$GITHUB_REF_NAME" --run-number "$GITHUB_RUN_NUMBER"
-      - name: Publish GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
+
+      - name: Verify and package release assets
         run: |
           set -eu
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            echo "A release already exists for $GITHUB_REF_NAME. Refusing to overwrite it."
+          python3 tools/package_release.py \
+            --tag "$RELEASE_TAG" \
+            --run-number "$GITHUB_RUN_NUMBER"
+
+      - name: Create Git tag for manual release
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          set -eu
+
+          echo "Creating $RELEASE_TAG at $GITHUB_SHA"
+
+          gh api --method POST \
+            "repos/${GITHUB_REPOSITORY}/git/refs" \
+            -f ref="refs/tags/${RELEASE_TAG}" \
+            -f sha="$GITHUB_SHA"
+
+      - name: Publish GitHub Release
+        run: |
+          set -eu
+
+          # Prevent overwriting an existing release.
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release already exists: $RELEASE_TAG"
             exit 1
           fi
-          gh release create "$GITHUB_REF_NAME" release-assets/*.zip \
-            --title "$GITHUB_REF_NAME" \
+
+          gh release create "$RELEASE_TAG" \
+            release-assets/*.zip \
+            --title "$RELEASE_TAG" \
             --notes-file release-assets/RELEASE_NOTES.md \
             --verify-tag
+
+          echo "Published release $RELEASE_TAG"

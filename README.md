@@ -493,3 +493,12 @@ The project is currently under active development.
 Bug reports, testing feedback and suggestions will be welcome when the repository is made available for external collaboration.
 
 Areas of particular interest include MIDI decoding, SysEx compatibility, transport reliability, interface usability and cross-platform LV2 support.
+
+
+## Building all targets and publishing releases
+
+Use **Actions → Build All Targets → Run workflow** and choose a branch to build ARM64, Windows x64 and Linux x64 together. Individual ARM64 and desktop workflows remain available for manual runs. No builds run automatically on pushes to `main`.
+
+To publish a release, update `VERSION` and `CHANGELOG.md`, commit to the release commit, and push a matching tag (for example `v0.1.0`). `Publish Release` validates the tag, builds all three targets and publishes a GitHub Release with three ZIP assets. ZIP filenames use the format `vVERSION-pistomp-midi-probe-PLATFORM-RUNNUMBER.zip`. The release uses that release workflow’s run number, shared across all three platforms. The publish job refuses to overwrite an existing release.
+
+**GitHub web editor note:** Ensure the `.github/workflows/` folder is updated explicitly; folder uploads can miss dot-prefixed directories.

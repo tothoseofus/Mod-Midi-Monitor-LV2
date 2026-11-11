@@ -24,6 +24,11 @@ Version numbers follow the project’s development milestones. Release dates are
 - Removed the redundant “Live MIDI event monitor” diagnostics text.
 - Diagnostics continue updating when their panel is collapsed; MIDI capture and retention remain unaffected by filter selections.
 
+### Build and release automation
+
+- Added reusable ARM64 and Windows/Linux build workflows, a manual **Build All Targets** orchestrator, and tag-triggered GitHub Release publishing.
+- Release filenames include the `v` prefix, version, platform and release run number. Removed the deprecated MODEP Atom investigation workflow and automatic builds on pushes to `main`.
+
 ### Compatibility
 
 - Filtering and layout changes affect only the MOD GUI; the v0.1.0 release also updates plugin/Patch URI constants in C, metadata and JavaScript, and attribution headers. No DSP algorithm changes, LV2 port changes, screenshot/thumbnail changes or build workflow changes.

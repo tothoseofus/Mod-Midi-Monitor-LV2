@@ -41,5 +41,5 @@ jobs:
           lv2ls | head -n 5 || true
       - uses: actions/upload-artifact@v6
         with:
-          name: ${{ steps.version.outputs.version }}-pistomp-midi-probe-aarch64-${{ github.run_number }}
+          name: v${{ steps.version.outputs.version }}-pistomp-midi-probe-aarch64-${{ github.run_number }}
           path: stage/

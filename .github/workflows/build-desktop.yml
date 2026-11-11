@@ -78,6 +78,6 @@ jobs:
           nm -D midi-monitor.so | grep -q ' lv2_descriptor$'
       - uses: actions/upload-artifact@v6
         with:
-          name: ${{ steps.version.outputs.version }}-pistomp-midi-probe-linux-x64-${{ github.run_number }}
+          name: v${{ steps.version.outputs.version }}-pistomp-midi-probe-linux-x64-${{ github.run_number }}
           path: stage/
           include-hidden-files: true

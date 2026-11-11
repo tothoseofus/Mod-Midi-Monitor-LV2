@@ -87,3 +87,12 @@ Version numbers follow the project’s development milestones. Release dates are
 ---
 
 The initial release is intended for diagnostic use. Host delivery, buffer limits and MIDI bypass behaviour can affect the events reported; successful testing under specific workloads does not guarantee lossless delivery under every configuration.
+
+### Release build versioning (v0.1.0)
+
+- Added a single `VERSION` file (`0.1.0`) and build-time TTL stamping for
+  `doap:revision`, `lv2:minorVersion` and `lv2:microVersion`.
+- Versioned GitHub Actions download names:
+  `VERSION-pistomp-midi-probe-PLATFORM-BUILDNO.zip`.
+- Tag builds check that `vMAJOR.MINOR.PATCH` matches the VERSION file.
+- The stable plugin URI and binary MIDI behaviour are unchanged.

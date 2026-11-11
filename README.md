@@ -299,6 +299,36 @@ MODEP may emit MIDI cleanup messages when plugins are switched on/off (notably C
 
 The repository uses **GitHub Actions**; neither local Linux compilation nor building on the piStomp itself is required.
 
+### Versioning and artifact names
+
+`VERSION` at the repository root is the **single source of truth** for the release
+version (currently `0.1.0`). Before building, the Windows, Linux and ARM64
+workflows run `tools/stamp_version.py`, which updates `monitor.ttl` with
+`doap:revision`, `lv2:minorVersion` and `lv2:microVersion`. The LV2 identifier
+(URI) does **not** change when the version changes, and no C source edits are
+required to bump the version.
+
+To publish the next version, edit `VERSION` to `MAJOR.MINOR.PATCH` and commit it.
+A release tag should be `vMAJOR.MINOR.PATCH` (for example `v0.1.0`). CI will
+**fail** if a tag's version does not match `VERSION`; this avoids mislabelled builds.
+
+GitHub Actions artefact ZIPs download with this naming scheme:
+
+```text
+VERSION-pistomp-midi-probe-PLATFORM-BUILDNO.zip
+```
+
+For example, `0.1.0-pistomp-midi-probe-aarch64-42.zip`,
+`0.1.0-pistomp-midi-probe-windows-x64-42.zip`, and
+`0.1.0-pistomp-midi-probe-linux-x64-42.zip` (build numbers are examples).
+`BUILDNO` is the GitHub Actions **workflow run number**, which is numbered
+separately for each workflow. Every downloaded archive contains exactly one
+`pistomp-midi-probe.lv2/` bundle, not a ZIP nested inside another ZIP.
+
+These are **Actions artifacts**, not automatically published GitHub Release
+attachments. If you publish a GitHub Release, attach the downloaded ZIPs to
+that release separately.
+
 ### Build targets
 
 | Target | Build environment | Binary | Test status |

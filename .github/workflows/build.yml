@@ -1,9 +1,8 @@
 name: Build ARM64 LV2 probe
 on:
-  push:
-    branches: [main]
-    tags: ["v*"]
+  workflow_call:
   workflow_dispatch:
+
 jobs:
   build:
     runs-on: ubuntu-24.04-arm

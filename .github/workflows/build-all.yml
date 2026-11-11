@@ -1,0 +1,14 @@
+name: Build All Targets
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  arm64:
+    uses: ./.github/workflows/build.yml
+
+  desktop:
+    uses: ./.github/workflows/build-desktop.yml

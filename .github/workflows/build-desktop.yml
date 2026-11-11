@@ -1,9 +1,7 @@
 name: Build MOD Desktop LV2 (Windows + Linux)
 
 on:
-  push:
-    branches: [main]
-    tags: ["v*"]
+  workflow_call:
   workflow_dispatch:
 
 jobs:

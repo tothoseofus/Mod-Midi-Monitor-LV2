@@ -1,0 +1,60 @@
+name: Upload to Patchstorage
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published GitHub release tag to upload (e.g. v0.1.0)
+        type: string
+        required: true
+        default: v0.1.0
+
+permissions:
+  contents: read
+
+concurrency:
+  group: patchstorage-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    name: Publish ARM64 and Linux x64 to Patchstorage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PATCHSTORAGE_USERNAME: ${{ secrets.PATCHSTORAGE_USERNAME }}
+      PATCHSTORAGE_PASSWORD: ${{ secrets.PATCHSTORAGE_PASSWORD }}
+      RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Verify configuration
+        run: |
+          set -eu
+          test -n "$PATCHSTORAGE_USERNAME" || { echo 'Missing PATCHSTORAGE_USERNAME secret'; exit 1; }
+          test -n "$PATCHSTORAGE_PASSWORD" || { echo 'Missing PATCHSTORAGE_PASSWORD secret'; exit 1; }
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid release tag'; exit 1; }
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
+
+      - name: Download GitHub release assets
+        run: |
+          mkdir -p released
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'v*-pistomp-midi-probe-*.zip' --dir released
+          ls -lh released
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install uploader requirements
+        run: |
+          python -m pip install requests click rdflib
+          git clone --depth 1 https://github.com/patchstorage/patchstorage-lv2-uploader.git patchstorage-uploader
+
+      - name: Prepare and publish two LV2 targets
+        run: |
+          python tools/publish_patchstorage.py \
+            --tag "$RELEASE_TAG" \
+            --release-dir released \
+            --uploader-dir patchstorage-uploader
